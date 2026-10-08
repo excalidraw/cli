@@ -64,6 +64,10 @@ jobs:
           tag=latest
           case "$VERSION" in *-*) tag=next ;; esac
           npm publish --access public --tag "$tag"
+      # npm writes why trusted publishing didn't authenticate only to its debug log.
+      - name: Show npm's trusted publishing log
+        if: failure()
+        run: grep -h oidc ~/.npm/_logs/*-debug-0.log || echo "No trusted publishing entries in npm's log."
       - name: Tag and create the GitHub release
         env:
           VERSION: ${{ steps.version.outputs.version }}
