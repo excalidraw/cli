@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { Command, Option } from "commander";
 import { registerCollectionsCommands } from "./commands/collections.js";
 import { registerLogsCommands } from "./commands/logs.js";
@@ -6,12 +5,10 @@ import { registerScenesCommands } from "./commands/scenes.js";
 import { registerWhoamiCommand } from "./commands/whoami.js";
 import { registerWorkspaceCommands } from "./commands/workspace.js";
 import { registerRenderCommand } from "./commands/render.js";
+import { registerUpdateCommand } from "./commands/update.js";
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES } from "./config.js";
+import { packageJson } from "./package.js";
 import { helpTheme } from "./theme.js";
-
-const packageJson = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-) as { version: string };
 
 export function createProgram() {
   const program = new Command();
@@ -31,7 +28,7 @@ export function createProgram() {
     .addOption(
       new Option(
         "-o, --output <format>",
-        "output format: json or table. Table applies to list commands and whoami; other commands print JSON",
+        "output format: json or table. Table applies to list commands, whoami and update; other commands print JSON",
       )
         .env("EXCALIDRAW_OUTPUT")
         .default("json"),
@@ -107,6 +104,7 @@ LEARN MORE
   registerCollectionsCommands(program);
   registerWorkspaceCommands(program);
   registerLogsCommands(program);
+  registerUpdateCommand(program);
 
   return program;
 }

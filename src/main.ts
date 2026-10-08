@@ -7,6 +7,7 @@ import { createProgram } from "./cli.js";
 import { ConfigError } from "./config.js";
 import { stripControlCharacters } from "./io.js";
 import { helpTheme } from "./theme.js";
+import { startUpdateCheck } from "./update.js";
 
 // Handles every stdout write failure. It never exits the process, so pending cleanup (like closing
 // the render browser) still runs. The stream is destroyed after the first error and later writes are dropped.
@@ -21,6 +22,15 @@ process.stdout.on("error", (error: NodeJS.ErrnoException) => {
 });
 
 const program = createProgram();
+let updateCheck: ReturnType<typeof startUpdateCheck>;
+
+// Runs only for commands that do something, not for --help, --version or usage errors.
+program.hook("preAction", (_program, command) => {
+  // `excalidraw update` looks up the latest version itself.
+  if (command.parent !== program || command.name() !== "update") {
+    updateCheck = startUpdateCheck();
+  }
+});
 
 // Error messages can quote API responses and scene content, such as an element ID, that other users wrote.
 function printError(style: (text: string) => string, text: string) {
@@ -65,3 +75,5 @@ try {
 
   process.exitCode = 1;
 }
+
+updateCheck?.finish();

@@ -23,6 +23,10 @@ npm install -g @excalidraw/cli
 
 Or try it without installing: `npx @excalidraw/cli --help`. Requires Node.js 22 or newer.
 
+To update, run `excalidraw update`. It installs the latest version with the package manager you installed the CLI with: npm, pnpm, yarn, bun or Volta. `excalidraw update --check` only reports whether a newer version is out.
+
+Commands you run in a terminal check for a newer version at most once a day, while the command runs, and mention it after the output. Set `EXCALIDRAW_NO_UPDATE_NOTIFIER=1` to turn this off.
+
 ## Quick start
 
 Workspace commands need an Excalidraw+ API key. The [authentication docs](https://plus.excalidraw.com/docs/api/authentication) explain how to create one.
@@ -93,6 +97,7 @@ Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or 
 | `workspace users` | List, update or remove members |
 | `workspace invites` | Manage email invites and invite links |
 | `logs` | Query the workspace audit log |
+| `update` | Update the CLI to the latest version |
 
 Updating the workspace, and the `users`, `invites` and `logs` commands, need admin rights. A personal key that belongs to a member gets `HTTP 403`.
 
@@ -114,12 +119,13 @@ echo '{"appState":{"viewBackgroundColor":"#f8f9fa"}}' | excalidraw scenes conten
 
 ## Scripting and agents
 
-- Commands print JSON. `-o table` prints list commands and `whoami` as a table.
+- Commands print JSON. `-o table` prints list commands, `whoami` and `update` as a table.
 - Lists return 5 items by default (50 for logs), up to 100 with `--limit`. `--all` fetches every page.
 - `--raw` prints the API's response text as received, and shows API errors in full.
 - `-` as a file path reads from stdin for inputs (`render -`, `--file -`) and writes to stdout for `--out`.
 - Rate-limited and failed read requests are retried, see `--retries` and `--request-timeout`. Retry notices go to stderr, so stdout stays parseable.
 - Any error exits with status 1.
+- The update check only runs when stdout and stderr are both a terminal, and never in CI (`CI` set), so it doesn't touch piped output or slow down scripts.
 
 ## Configuration
 

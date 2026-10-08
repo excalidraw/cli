@@ -69,10 +69,23 @@ jobs:
           tag=latest
           case "$VERSION" in *-*) tag=next ;; esac
           npm publish --access public --tag "$tag"
-      # npm writes why trusted publishing didn't authenticate only to its debug log.
+      # npm writes why trusted publishing didn't authenticate only to its debug log. The claims
+      # are what npm matches against the trusted publisher settings; the token itself isn't printed.
       - name: Show npm's trusted publishing log
         if: failure()
-        run: grep -h oidc ~/.npm/_logs/*-debug-0.log || echo "No trusted publishing entries in npm's log."
+        run: |
+          grep -h oidc ~/.npm/_logs/*-debug-0.log || echo "No trusted publishing entries in npm's log."
+          node -e '
+            const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+            url.searchParams.set("audience", "npm:registry.npmjs.org");
+            fetch(url, { headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` } })
+              .then((response) => response.json())
+              .then(({ value }) => {
+                const claims = JSON.parse(Buffer.from(value.split(".")[1], "base64url").toString());
+                const keys = ["repository", "repository_owner", "repository_visibility", "workflow_ref", "job_workflow_ref", "ref", "environment", "event_name", "runner_environment"];
+                console.log(JSON.stringify(Object.fromEntries(keys.map((key) => [key, claims[key] ?? null])), null, 2));
+              });
+          '
       - name: Tag and create the GitHub release
         env:
           VERSION: ${{ steps.version.outputs.version }}

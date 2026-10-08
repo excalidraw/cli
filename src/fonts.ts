@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { cacheDirectory } from "./cache.js";
 
 /** Fonts left out of the package (Xiaolai, the CJK fallback for Excalifont), by sha256. */
 type RemoteFonts = { release: string; fonts: Record<string, string> };
@@ -16,14 +16,7 @@ function defaultMirrors(release: string) {
 }
 
 function fontCacheDirectory() {
-  const base = process.env.XDG_CACHE_HOME
-    ? process.env.XDG_CACHE_HOME
-    : process.platform === "darwin"
-      ? join(homedir(), "Library", "Caches")
-      : process.platform === "win32"
-        ? (process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"))
-        : join(homedir(), ".cache");
-  return join(base, "excalidraw-cli", "fonts");
+  return join(cacheDirectory(), "fonts");
 }
 
 /**

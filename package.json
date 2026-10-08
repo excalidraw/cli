@@ -29,7 +29,7 @@
     "build": "pnpm run clean && tsc -p tsconfig.json && node scripts/build.mjs && node scripts/build-renderer.mjs",
     "typecheck": "tsc -p tsconfig.json && pnpm run typecheck:test",
     "typecheck:test": "tsc -p tsconfig.test.json",
-    "test": "pnpm run build && pnpm run typecheck:test && node --test test/integration.test.ts test/features.test.ts test/render-validation.test.ts",
+    "test": "pnpm run build && pnpm run typecheck:test && node --test test/integration.test.ts test/features.test.ts test/update.test.ts test/render-validation.test.ts",
     "test:render": "pnpm run build && pnpm run typecheck:test && node --test test/render.test.ts",
     "test:e2e": "pnpm run build && pnpm run typecheck:test && node --test test/e2e.test.ts",
     "bench": "node scripts/bench.mjs",
