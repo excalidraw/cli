@@ -1,0 +1,56 @@
+{
+  "name": "@excalidraw/cli",
+  "version": "0.1.0",
+  "description": "Manage Excalidraw workspace resources through the public API and render scenes locally as PNG.",
+  "keywords": [
+    "excalidraw",
+    "cli",
+    "diagrams",
+    "whiteboard"
+  ],
+  "homepage": "https://github.com/excalidraw/cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/excalidraw/cli.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "excalidraw": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && tsc -p tsconfig.json && node scripts/build.mjs && node scripts/build-renderer.mjs",
+    "typecheck": "tsc -p tsconfig.json && pnpm run typecheck:test",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test": "pnpm run build && pnpm run typecheck:test && node --test test/integration.test.ts test/features.test.ts test/render-validation.test.ts",
+    "test:render": "pnpm run build && pnpm run typecheck:test && node --test test/render.test.ts",
+    "test:e2e": "pnpm run build && pnpm run typecheck:test && node --test test/e2e.test.ts",
+    "bench": "node scripts/bench.mjs",
+    "prepublishOnly": "pnpm run test"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  },
+  "devDependencies": {
+    "@excalidraw/utils": "0.1.5",
+    "@types/node": "^22.19.3",
+    "@types/pngjs": "^6.0.5",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "esbuild": "^0.28.2",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.9.3",
+    "zod": "^4.1.13"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.28.2"
+}
