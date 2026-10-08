@@ -79,6 +79,25 @@ liveTest("whoami", async (t) => {
   t.diagnostic(`keyType: ${identity.keyType}, workspace: ${identity.workspace.name}`);
 });
 
+liveTest("login checks and saves the key, whoami uses it, and logout removes it", async () => {
+  assert.ok(tempDir && liveApiEnv.EXCALIDRAW_API_KEY);
+  const env = cliEnv({ ...liveApiEnv, EXCALIDRAW_API_KEY: "", XDG_CONFIG_HOME: join(tempDir, "config") });
+  // Failures report stderr, not the command line, which holds the key.
+  const run = async (args: string[]) => {
+    try {
+      return await execFileAsync(process.execPath, [cliPath, ...args], { env });
+    } catch (error) {
+      assertExecError(error);
+      throw new Error(`excalidraw ${args[0]} failed:\n${error.stderr}`);
+    }
+  };
+
+  await assert.rejects(() => run(["login", "--api-key", "not-a-valid-key"]), /The API rejected the key \(HTTP 401/);
+  assert.match((await run(["login", "--api-key", liveApiEnv.EXCALIDRAW_API_KEY])).stderr, /^Logged in/);
+  assert.equal(JSON.parse((await run(["whoami"])).stdout).credentialSource, "login");
+  assert.match((await run(["logout"])).stderr, /^Logged out of /);
+});
+
 liveTest("collections list", async (t) => {
   const result = await runStepJson<Page<Collection>>(t, "List collections", ["collections", "list", "--limit", "20", "--offset", "0"]);
   assert.ok(Array.isArray(result.data), "collections list should return data array");

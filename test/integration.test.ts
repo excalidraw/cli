@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
-import { assertExecError, cliEnv } from "./helpers.ts";
+import { assertExecError, cliEnv, escapeRegExp } from "./helpers.ts";
 
 const execFileAsync = promisify(execFile);
 const cliPath = fileURLToPath(new URL("../dist/main.js", import.meta.url));
@@ -14,6 +14,8 @@ test("help output exposes the command tree", async () => {
     {
       args: ["--help"],
       expected: [
+        "login",
+        "logout",
         "whoami",
         "render",
         "scenes",
@@ -29,6 +31,7 @@ test("help output exposes the command tree", async () => {
         "--api-url <url>",
       ],
     },
+    { args: ["login", "--help"], expected: ["plus.excalidraw.com/docs/api/authentication", "credentials.json", "--api-key uk-..."] },
     { args: ["scenes", "--help"], expected: ["list", "get <sceneId>", "create", "update", "delete", "content", "render"] },
     { args: ["render", "--help"], expected: ["--out <file>", "--frame-id <id>", "--browser-path <path>", "No account or API key"] },
     { args: ["scenes", "render", "--help"], expected: ["--out <file>", "--scale <number>", "--max-width <pixels>"] },
@@ -128,8 +131,8 @@ test("missing API key prints a setup hint", async () => {
       assertExecError(error);
       assert.equal(error.code, 1);
       assert.match(error.stderr, /Configuration error:/);
-      assert.match(error.stderr, /Missing API key/);
-      assert.match(error.stderr, /--api-key <key>/);
+      assert.match(error.stderr, /Missing API key for https:\/\/api\.excalidraw\.com\./);
+      assert.match(error.stderr, /Run "excalidraw login", pass --api-key <key>, or set EXCALIDRAW_API_KEY\./);
       assert.doesNotMatch(error.stderr, /expected string, received undefined/);
       return true;
     },
@@ -147,8 +150,4 @@ async function runCli(args: string[], options: { env?: NodeJS.ProcessEnv } = {})
     error.message = `${error.message}\nstdout:\n${error.stdout ?? ""}\nstderr:\n${error.stderr ?? ""}`;
     throw error;
   }
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

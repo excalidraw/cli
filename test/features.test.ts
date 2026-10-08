@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, open, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type OutgoingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
-import { assertExecError, cliEnv, runWithStdout } from "./helpers.ts";
+import { assertExecError, cliEnv, escapeRegExp, runWithStdout } from "./helpers.ts";
 
 const execFileAsync = promisify(execFile);
 const cliPath = fileURLToPath(new URL("../dist/main.js", import.meta.url));
@@ -59,6 +59,9 @@ const HUGE_LIST = 150_000;
 /** An error page like a gateway's, far longer than what stderr should show by default. */
 const LONG_ERROR_PAGE = `<html><body>${"Bad request from the gateway. ".repeat(100)}</body></html>`;
 
+/** A valid workspace key whose permissions don't include reading the workspace. */
+const LIMITED_KEY = "limited-key";
+
 /** Minimal stand-in for the public API: offset lists, cursor logs, workspace, content writes, and 429s. */
 function createMockApi() {
   const calls: ApiCall[] = [];
@@ -77,8 +80,12 @@ function createMockApi() {
       res.end(JSON.stringify(payload));
     };
 
-    if (req.headers.authorization !== "Bearer test-key" && req.headers.authorization !== "Bearer uk-test-key") {
+    if (!["Bearer test-key", "Bearer uk-test-key", `Bearer ${LIMITED_KEY}`].includes(req.headers.authorization ?? "")) {
       return send(401, { statusCode: 401, error: "Unauthorized", message: "Unauthorized" });
+    }
+
+    if (url.pathname === "/api/v1/workspaces" && req.headers.authorization === `Bearer ${LIMITED_KEY}`) {
+      return send(403, { statusCode: 403, error: "Forbidden", message: "Missing permission" });
     }
 
     if (url.pathname === "/api/v1/scenes" && req.method === "GET") {
@@ -468,7 +475,7 @@ test("whoami reports key type and workspace summary", async () => {
     const personal = JSON.parse((await runCli(["whoami"], { origin, env: { EXCALIDRAW_API_KEY: "uk-test-key" } })).stdout);
     assert.equal(personal.keyType, "personal");
     assert.equal(personal.apiUrl, origin);
-    assert.deepEqual(personal.workspace, { id: "ws_1", name: "Acme", subscriptionStatus: "active", userCount: 2 });
+    assert.deepEqual(personal.workspace, { id: "ws_1", name: "Acme", subscriptionStatus: "active" });
 
     const workspace = JSON.parse((await runCli(["whoami"], { origin })).stdout);
     assert.equal(workspace.keyType, "workspace");
@@ -476,6 +483,163 @@ test("whoami reports key type and workspace summary", async () => {
     const { stdout } = await runCli(["whoami", "-o", "table"], { origin });
     assert.match(stdout, /^FIELD\s+VALUE$/m);
     assert.match(stdout, /^workspace\.name\s+Acme$/m);
+  });
+});
+
+test("login saves the key per API origin, and commands use it unless a flag or variable overrides it", async (t) => {
+  const config = await mkdtemp(join(tmpdir(), "excalidraw-cli-config-"));
+  t.after(() => rm(config, { recursive: true, force: true }));
+  const file = join(config, "excalidraw-cli", "credentials.json");
+  // A blank variable counts as unset, so the saved key applies.
+  const env = { XDG_CONFIG_HOME: config, EXCALIDRAW_API_KEY: "" };
+
+  await withApi(async ({ origin }) => {
+    await withApi(async ({ origin: other }) => {
+      const login = await runCli(["login", "--api-key", "uk-test-key"], { origin, env });
+      assert.equal(login.stdout, "");
+      assert.equal(login.stderr, "Logged in to Acme\n");
+      await runCli(["login", "--api-key", "test-key"], { origin: other, env });
+
+      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), {
+        version: 1,
+        origins: {
+          [origin]: { type: "api-key", apiKey: "uk-test-key" },
+          [other]: { type: "api-key", apiKey: "test-key" },
+        },
+      });
+      if (process.platform !== "win32") {
+        assert.equal((await stat(file)).mode & 0o777, 0o600);
+        assert.equal((await stat(dirname(file))).mode & 0o777, 0o700);
+      }
+
+      const whoami = async (origin: string, args: string[] = [], extraEnv = {}) =>
+        JSON.parse((await runCli(["whoami", ...args], { origin, env: { ...env, ...extraEnv } })).stdout);
+      assert.deepEqual(await whoami(origin), { ...(await whoami(origin, ["--api-key", "uk-test-key"])), credentialSource: "login" });
+      assert.equal((await whoami(other)).keyType, "workspace");
+      // The mock rejects other keys, so a workspace key type proves which key was sent.
+      assert.deepEqual(await whoami(origin, [], { EXCALIDRAW_API_KEY: "test-key" }), {
+        apiUrl: origin,
+        keyType: "workspace",
+        credentialSource: "env",
+        workspace: { id: "ws_1", name: "Acme", subscriptionStatus: "active" },
+      });
+      assert.equal((await whoami(origin, ["--api-key", "test-key"])).credentialSource, "flag");
+
+      assert.deepEqual(await runCli(["logout"], { origin: other, env }), { stdout: "", stderr: `Logged out of ${other}\n` });
+      assert.deepEqual(await runCli(["logout"], { origin: other, env }), { stdout: "", stderr: `No key was saved for ${other}\n` });
+      await assert.rejects(
+        () => runCli(["scenes", "list"], { origin: other, env }),
+        (error: unknown) => {
+          assertExecError(error);
+          assert.match(error.stderr, new RegExp(`Missing API key for ${escapeRegExp(other)}\\. Run "excalidraw login"`));
+          return true;
+        },
+      );
+      assert.equal((await whoami(origin)).credentialSource, "login", "logging out of one origin keeps the others");
+
+      await runCli(["logout"], { origin, env });
+      assert.equal(existsSync(file), false, "the file is removed with its last key");
+    });
+  });
+});
+
+test("login doesn't save a key the API rejects, and doesn't save EXCALIDRAW_API_KEY by itself", async (t) => {
+  const config = await mkdtemp(join(tmpdir(), "excalidraw-cli-config-"));
+  t.after(() => rm(config, { recursive: true, force: true }));
+  const file = join(config, "excalidraw-cli", "credentials.json");
+
+  await withApi(async ({ origin }) => {
+    await assert.rejects(
+      () => runCli(["login", "--api-key", "wrong-key"], { origin, env: { XDG_CONFIG_HOME: config } }),
+      (error: unknown) => {
+        assertExecError(error);
+        assert.equal(error.code, 1);
+        assert.match(error.stderr, /The API rejected the key \(HTTP 401: Unauthorized\), so it was not saved\./);
+        return true;
+      },
+    );
+
+    // Without a terminal, login can't ask, and the variable isn't an answer.
+    await assert.rejects(
+      () => runCli(["login"], { origin, env: { XDG_CONFIG_HOME: config } }),
+      (error: unknown) => {
+        assertExecError(error);
+        assert.match(error.stderr, /asks for the key in a terminal\. In scripts, pass it with "excalidraw login --api-key <key>"/);
+        return true;
+      },
+    );
+    assert.equal(existsSync(file), false);
+
+    // The saved key works, but the variable still wins, so login and logout say so.
+    const login = await runCli(["login", "--api-key", "uk-test-key"], { origin, env: { XDG_CONFIG_HOME: config } });
+    assert.match(login.stderr, /EXCALIDRAW_API_KEY is set, so commands use it instead of the saved key/);
+    const logout = await runCli(["logout"], { origin, env: { XDG_CONFIG_HOME: config } });
+    assert.match(logout.stderr, /EXCALIDRAW_API_KEY is still set/);
+  });
+});
+
+test("login saves a valid key that can't read the workspace, and says so", async (t) => {
+  const config = await mkdtemp(join(tmpdir(), "excalidraw-cli-config-"));
+  t.after(() => rm(config, { recursive: true, force: true }));
+  const env = { XDG_CONFIG_HOME: config, EXCALIDRAW_API_KEY: "" };
+
+  await withApi(async ({ origin, calls }) => {
+    const { stderr } = await runCli(["login", "--api-key", LIMITED_KEY], { origin, env });
+    assert.equal(stderr, "Logged in\nSaved the key, but the API refused to show its workspace (HTTP 403: Missing permission).\n");
+
+    await runCli(["scenes", "list"], { origin, env });
+    assert.equal(calls.at(-1)?.path, "/api/v1/scenes");
+  });
+});
+
+test("login replaces a damaged credentials file, and leaves one from a newer CLI alone", async (t) => {
+  const config = await mkdtemp(join(tmpdir(), "excalidraw-cli-config-"));
+  t.after(() => rm(config, { recursive: true, force: true }));
+  const file = join(config, "excalidraw-cli", "credentials.json");
+  await mkdir(dirname(file));
+  const env = { XDG_CONFIG_HOME: config, EXCALIDRAW_API_KEY: "" };
+
+  await withApi(async ({ origin }) => {
+    const rejects = (args: string[], message: RegExp) =>
+      assert.rejects(
+        () => runCli(args, { origin, env }),
+        (error: unknown) => {
+          assertExecError(error);
+          assert.match(error.stderr, message);
+          return true;
+        },
+      );
+    const invalid = new RegExp(`Can't read the saved credentials in ${escapeRegExp(file)}\\. Run "excalidraw login" again\\.`);
+
+    await writeFile(file, "{ truncated");
+    await rejects(["scenes", "list"], invalid);
+    // An explicit key doesn't need the file.
+    await runCli(["scenes", "list"], { origin, env: { ...env, EXCALIDRAW_API_KEY: "test-key" } });
+
+    await writeFile(file, JSON.stringify({ [origin]: { type: "api-key", apiKey: "test-key" } }));
+    await rejects(["scenes", "list"], invalid);
+    await runCli(["login", "--api-key", "test-key"], { origin, env });
+    await runCli(["scenes", "list"], { origin, env });
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { version: 1, origins: { [origin]: { type: "api-key", apiKey: "test-key" } } });
+
+    // A newer CLI may have changed the layout, so the file is left alone.
+    const newer = JSON.stringify({ version: 2, accounts: [] });
+    await writeFile(file, newer);
+    await rejects(["scenes", "list"], /was saved by a newer version of the excalidraw CLI\. Upgrade the CLI to use it\./);
+    await rejects(["login", "--api-key", "test-key"], /was saved by a newer version/);
+    await rejects(["logout"], /was saved by a newer version/);
+    assert.equal(await readFile(file, "utf8"), newer);
+
+    // A credential type a newer CLI added: login replaces it, and other fields survive the rewrite.
+    await writeFile(file, JSON.stringify({ version: 1, origins: { [origin]: { type: "oauth", token: "x" } }, defaults: { a: 1 } }));
+    await rejects(["scenes", "list"], new RegExp(`Can't use the credentials saved for ${escapeRegExp(origin)} in .*If a newer version of the CLI saved them, upgrade it`));
+    await runCli(["login", "--api-key", "test-key"], { origin, env });
+    await runCli(["scenes", "list"], { origin, env });
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), {
+      version: 1,
+      origins: { [origin]: { type: "api-key", apiKey: "test-key" } },
+      defaults: { a: 1 },
+    });
   });
 });
 

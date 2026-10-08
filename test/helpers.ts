@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 type ExecError = Error & {
@@ -12,6 +14,8 @@ type ExecError = Error & {
 // The CLI's own settings, except the browser path the render tests may need, and the color switches commander and chalk read.
 const CLI_SETTING = /^EXCALIDRAW_(?!BROWSER_PATH$)/;
 const COLOR_SWITCHES = new Set(["NO_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE"]);
+/** A config directory that doesn't exist, so the key the developer saved with `excalidraw login` isn't used. Tests that log in pass their own. */
+const NO_CONFIG = join(tmpdir(), `excalidraw-cli-test-no-config-${process.pid}`);
 
 /**
  * The developer's environment without the variables that change what the CLI does or prints, plus `env`.
@@ -19,7 +23,11 @@ const COLOR_SWITCHES = new Set(["NO_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE"]);
  */
 export function cliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const inherited = Object.entries(process.env).filter(([name]) => !CLI_SETTING.test(name) && !COLOR_SWITCHES.has(name));
-  return { ...Object.fromEntries(inherited), NODE_NO_WARNINGS: "1", ...env };
+  return { ...Object.fromEntries(inherited), NODE_NO_WARNINGS: "1", XDG_CONFIG_HOME: NO_CONFIG, ...env };
+}
+
+export function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function assertExecError(error: unknown): asserts error is ExecError {

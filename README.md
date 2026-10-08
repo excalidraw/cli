@@ -32,7 +32,8 @@ Commands you run in a terminal check for a newer version at most once a day, whi
 Workspace commands need an Excalidraw+ API key. The [authentication docs](https://plus.excalidraw.com/docs/api/authentication) explain how to create one.
 
 ```bash
-export EXCALIDRAW_API_KEY="your_api_key"
+# Paste your API key once; later commands use it
+excalidraw login
 
 # Check which workspace the key belongs to
 excalidraw whoami
@@ -87,7 +88,9 @@ Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or 
 
 | Command | What it does |
 | --- | --- |
-| `whoami` | Show the workspace, key type and API origin in use |
+| `login` | Check an API key and save it for later commands |
+| `logout` | Remove the saved API key |
+| `whoami` | Show the workspace, key type, credential source and API origin in use |
 | `scenes` | List, create, rename, move, pin and trash scenes |
 | `scenes content` | Read, replace or patch a scene's drawing |
 | `scenes render` | Render a workspace scene to PNG |
@@ -119,7 +122,8 @@ echo '{"appState":{"viewBackgroundColor":"#f8f9fa"}}' | excalidraw scenes conten
 
 ## Scripting and agents
 
-- Commands print JSON. `-o table` prints list commands, `whoami` and `update` as a table.
+- Commands print JSON, except `login` and `logout`, which print a confirmation. `-o table` prints list commands, `whoami` and `update` as a table.
+- Set `EXCALIDRAW_API_KEY` rather than running `login`, which asks for the key in a terminal. `excalidraw login --api-key <key>` saves a key without asking.
 - Lists return 5 items by default (50 for logs), up to 100 with `--limit`. `--all` fetches every page.
 - `--raw` prints the API's response text as received, and shows API errors in full.
 - `-` as a file path reads from stdin for inputs (`render -`, `--file -`) and writes to stdout for `--out`.
@@ -133,7 +137,7 @@ These flags can also be set with environment variables.
 
 | Flag | Environment variable | Default |
 | --- | --- | --- |
-| `--api-key` | `EXCALIDRAW_API_KEY` | |
+| `--api-key` | `EXCALIDRAW_API_KEY` | key saved by `login` |
 | `--api-url` | `EXCALIDRAW_API_URL` | `https://api.excalidraw.com` |
 | `-o, --output` | `EXCALIDRAW_OUTPUT` | `json` |
 | `--retries` | `EXCALIDRAW_RETRIES` | `3` |
@@ -143,7 +147,13 @@ These flags can also be set with environment variables.
 
 For a self-hosted or staging instance, set `--api-url` to the origin, without `/api/v1`.
 
+### API keys
+
 There are two kinds of API key. Workspace keys act for the whole workspace. They can't see private scenes, so `scenes create` needs a real collection ID. Personal keys start with `uk-` and act as one user, with that user's role. They can pass `private` as the collection ID to use the owner's private collection. Run `excalidraw whoami` to see which kind you're using.
+
+`excalidraw login` asks how to sign in (an API key for now; OAuth is coming), checks the key against the API and saves it. A key the API rejects isn't saved. Commands use the saved key when neither `--api-key` nor `EXCALIDRAW_API_KEY` is set; `whoami` reports which one is in use as `credentialSource` (`flag`, `env` or `login`).
+
+Keys are saved per API origin, so a staging key is only sent to staging: `excalidraw login --api-url https://staging.example.com` saves one next to your production key. They live in `~/.config/excalidraw-cli/credentials.json` (`$XDG_CONFIG_HOME` if set, `%APPDATA%` on Windows), readable only by you. `excalidraw logout` removes the key for the origin; to revoke the key itself, delete it in Excalidraw+.
 
 The full API reference lives at [plus.excalidraw.com/docs/api](https://plus.excalidraw.com/docs/api).
 

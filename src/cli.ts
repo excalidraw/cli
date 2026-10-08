@@ -1,5 +1,6 @@
 import { Command, Option } from "commander";
 import { registerCollectionsCommands } from "./commands/collections.js";
+import { registerLoginCommands } from "./commands/login.js";
 import { registerLogsCommands } from "./commands/logs.js";
 import { registerScenesCommands } from "./commands/scenes.js";
 import { registerWhoamiCommand } from "./commands/whoami.js";
@@ -24,7 +25,11 @@ export function createProgram() {
         "EXCALIDRAW_API_URL",
       ),
     )
-    .addOption(new Option("--api-key <key>", "API key").env("EXCALIDRAW_API_KEY"))
+    .addOption(
+      new Option("--api-key <key>", 'API key; overrides the key "excalidraw login" saved').env(
+        "EXCALIDRAW_API_KEY",
+      ),
+    )
     .addOption(
       new Option(
         "-o, --output <format>",
@@ -54,6 +59,7 @@ export function createProgram() {
       "after",
       `
 EXAMPLES
+  $ excalidraw login
   $ excalidraw whoami
   $ excalidraw scenes list --limit 25
   $ excalidraw scenes list --all --output table
@@ -64,10 +70,10 @@ EXAMPLES
   $ excalidraw logs list --operation update --limit 10
 
 SETUP
-  Set EXCALIDRAW_API_KEY for non-interactive use, or pass --api-key per command.
+  Run "excalidraw login" once to save an API key. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead; both take precedence over the saved key.
   Local "render" commands do not require an API key.
-  Use --api-url for development, staging, or self-hosted API origins. Pass the origin only; /api/v1 is added automatically.
-  Run "excalidraw whoami" to confirm which workspace and key type the CLI is using.
+  Use --api-url for development, staging, or self-hosted API origins. Pass the origin only; /api/v1 is added automatically. Saved keys are per origin.
+  Run "excalidraw whoami" to confirm which workspace, key type and credential source the CLI is using.
 
 OUTPUT
   Commands print formatted JSON by default. Use --output table for readable lists, or --raw for the raw API response text.
@@ -98,6 +104,7 @@ LEARN MORE
     styleArgumentTerm: helpTheme.argument,
   });
 
+  registerLoginCommands(program);
   registerWhoamiCommand(program);
   registerScenesCommands(program);
   registerRenderCommand(program);
