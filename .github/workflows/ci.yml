@@ -31,6 +31,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Builds, typechecks, and runs the offline suite against a mock API.
       - run: pnpm run test
+      # On a fresh runner, Chrome's first start can take over 30 s (likely while it builds font
+      # caches), which hits the render tests' deadline. Start it once beforehand.
+      - name: Warm up Chrome
+        run: timeout 300 google-chrome --headless --no-sandbox --disable-gpu --screenshot=/tmp/warm-up.png 'data:text/html,<p>warm up</p>'
       # Renders with the Google Chrome that the runner image ships.
       - run: pnpm run test:render
       # Pull requests from forks don't get the secret, so there every live test skips.

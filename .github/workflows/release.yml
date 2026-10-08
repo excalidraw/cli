@@ -47,6 +47,11 @@ jobs:
           fi
       - if: steps.version.outputs.published == 'false'
         run: pnpm install --frozen-lockfile
+      # On a fresh runner, Chrome's first start can take over 30 s (likely while it builds font
+      # caches), which hits the render tests' deadline. Start it once beforehand.
+      - name: Warm up Chrome
+        if: steps.version.outputs.published == 'false'
+        run: timeout 300 google-chrome --headless --no-sandbox --disable-gpu --screenshot=/tmp/warm-up.png 'data:text/html,<p>warm up</p>'
       - if: steps.version.outputs.published == 'false'
         run: pnpm run test:render
       # prepublishOnly builds again and runs the offline suite. Prerelease versions, such as
