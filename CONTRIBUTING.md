@@ -40,3 +40,7 @@ pnpm run test:e2e
 ```
 
 The e2e suite runs real commands against a live workspace and deletes the resources it creates. It is skipped unless both variables are set. Invite and log commands need admin rights, so use a workspace key with full permissions or a personal key that belongs to an admin. Set `EXCALIDRAW_E2E_DEBUG=1` to print a summary of each response.
+
+## CI
+
+Every pull request runs the offline, rendering (with Chrome) and live API tests on Node 22. The live API tests use the test workspace key from the `EXCALIDRAW_E2E_API_KEY` secret, and `EXCALIDRAW_API_URL` from a repository variable if set. Pull requests from forks don't get the key, so their live API tests skip; a maintainer can push a fork's changes to a branch here to run them.
