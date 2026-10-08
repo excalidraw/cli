@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A new push to a pull request replaces its running checks.
+  cancel-in-progress: true
+
+# Actions are pinned to commits; the comments name the release.
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Installs the pnpm version from package.json's packageManager field.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      # Builds, typechecks, and runs the offline suite against a mock API.
+      - run: pnpm run test
+      # Renders with the Google Chrome that the runner image ships.
+      - run: pnpm run test:render
+      # Pull requests from forks don't get the secret, so there every live test skips.
+      - run: pnpm run test:e2e
+        env:
+          EXCALIDRAW_API_URL: ${{ vars.EXCALIDRAW_API_URL || 'https://api.excalidraw.com' }}
+          EXCALIDRAW_API_KEY: ${{ secrets.EXCALIDRAW_E2E_API_KEY }}
