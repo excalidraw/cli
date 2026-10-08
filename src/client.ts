@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES, resolveConfig } from "./config.js";
 
 import type { Command } from "commander";
+import type { GlobalOptions } from "./config.js";
 
 const ErrorResponseSchema = z
   .object({
@@ -208,7 +209,10 @@ function encodePathId(id: string) {
 }
 
 export function getClient(command: Command) {
-  const config = resolveConfig(command.optsWithGlobals());
+  return createClient(resolveConfig(command));
+}
+
+export function createClient(config: GlobalOptions & { apiKey: string }) {
   return new PublicApiClient(config.apiUrl, config.apiKey, {
     retries: config.retries,
     timeout: config.requestTimeout,
