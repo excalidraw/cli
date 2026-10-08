@@ -44,3 +44,15 @@ The e2e suite runs real commands against a live workspace and deletes the resour
 ## CI
 
 Every pull request runs the offline, rendering (with Chrome) and live API tests on Node 22. The live API tests use the test workspace key from the `EXCALIDRAW_E2E_API_KEY` secret, and `EXCALIDRAW_API_URL` from a repository variable if set. Pull requests from forks don't get the key, so their live API tests skip; a maintainer can push a fork's changes to a branch here to run them.
+
+## Releasing
+
+Bump `version` in `package.json` on `master`, then push `master` to the `release` branch:
+
+```bash
+git push origin master:release
+```
+
+The release workflow runs the build and the offline and rendering tests, publishes the version to npm, tags it `v<version>`, and creates a GitHub release with generated notes. Prerelease versions such as `0.2.0-beta.1` are published under the `next` tag instead of `latest`. If the version is already on npm, the workflow does nothing.
+
+npm publishing uses [trusted publishing](https://docs.npmjs.com/trusted-publishers): on npmjs.com, the `@excalidraw/cli` package settings list this repository and the `release.yml` workflow. Before the first release, while the package doesn't exist on npm yet, add an npm token with publish access to `@excalidraw` as the `NPM_TOKEN` repository secret, then delete it once trusted publishing is set up. Packages get a provenance attestation once this repository is public.
