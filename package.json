@@ -16,7 +16,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "excalidraw": "./dist/main.js"
+    "excalidraw": "dist/main.js"
   },
   "files": [
     "dist"
