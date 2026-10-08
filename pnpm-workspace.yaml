@@ -1,0 +1,8 @@
+# Don't resolve package versions published less than a day ago (in minutes), giving the
+# community time to catch compromised releases. pnpm 11 defaults to this; set explicitly.
+minimumReleaseAge: 1440
+
+# Dependencies may not run install scripts. esbuild's postinstall only speeds up its CLI binary;
+# the build uses its JS API, which loads the platform package directly.
+allowBuilds:
+  esbuild: false
