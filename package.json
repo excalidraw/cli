@@ -1,6 +1,6 @@
 {
   "name": "@excalidraw/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Manage Excalidraw workspace resources through the public API and render scenes locally as PNG.",
   "keywords": [
     "excalidraw",
