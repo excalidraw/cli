@@ -206,6 +206,8 @@ After the first render, open the PNG. Fix text that clips, arrows that start ins
 
 ## Patch and put
 
+Rendering a patch file locally draws only the elements in that file. It does not show the merged scene. Copy the GET document, drop in the changed elements, and render that copy when you need a preview.
+
 Get the scene first when you are editing rather than replacing:
 
 ```bash

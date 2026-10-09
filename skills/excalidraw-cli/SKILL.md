@@ -114,6 +114,8 @@ This is the mistake that deletes a user's drawing.
 
 Prefer patch for agent edits. Use put only when the file is the source of truth for the whole scene.
 
+A local render of a patch file draws only the elements in that file, not the merged scene. To preview an edit, copy the `scenes content get` document, replace the changed elements in that copy, and render the copy. After a successful patch, `scenes render` shows what was stored.
+
 `scenes content get` returns the stored document. It may include `filesFailedToEmbed`; write commands ignore that field, but render throws if a live image's `fileId` is listed there. Fetch the scene again before rendering in that case. `scenes get` is metadata only and does not include elements.
 
 ## Render options
