@@ -131,6 +131,14 @@ echo '{"appState":{"viewBackgroundColor":"#f8f9fa"}}' | excalidraw scenes conten
 - Any error exits with status 1.
 - The update check only runs when stdout and stderr are both a terminal, and never in CI (`CI` set), so it doesn't touch piped output or slow down scripts.
 
+## Agent skill
+
+[`skills/excalidraw-cli`](skills/excalidraw-cli/SKILL.md) is an [Agent Skill](https://agentskills.io) for this CLI: authentication, scene JSON, rendering, and the commands above. Install it with:
+
+```bash
+npx skills add excalidraw/cli
+```
+
 ## Configuration
 
 These flags can also be set with environment variables.
