@@ -182,6 +182,7 @@ echo '{"appState":{"viewBackgroundColor":"#f8f9fa"}}' | excalidraw scenes conten
 - `-` as a file path reads from stdin for inputs (`render -`, `--file -`) and writes to stdout for `--out`.
 - Rate-limited and failed read requests are retried, see `--retries` and `--request-timeout`. Retry notices go to stderr, so stdout stays parseable.
 - Any error exits with status 1.
+- API requests send `User-Agent: excalidraw-cli/<version> node/<version> <platform>-<arch>`, so the API can tell CLI usage apart from other API clients.
 - The update check only runs when stdout and stderr are both a terminal, and never in CI (`CI` set), so it doesn't touch piped output or slow down scripts.
 
 ## Configuration

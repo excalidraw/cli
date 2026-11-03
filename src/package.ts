@@ -9,3 +9,9 @@ export const packageJson = JSON.parse(readFileSync(packageJsonUrl, "utf8")) as {
 
 /** Where the CLI is installed. Node runs the script by its real path, so symlinks are resolved. */
 export const packageDirectory = dirname(fileURLToPath(packageJsonUrl));
+
+/**
+ * Sent with every API request. The API counts requests whose User-Agent starts with
+ * `excalidraw-cli/<version>` as CLI usage, apart from other API and MCP clients.
+ */
+export const userAgent = `excalidraw-cli/${packageJson.version} node/${process.versions.node} ${process.platform}-${process.arch}`;

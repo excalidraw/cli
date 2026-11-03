@@ -18,6 +18,7 @@ type ApiCall = {
   path: string;
   query: Record<string, string>;
   body: Record<string, unknown> | undefined;
+  userAgent: string | undefined;
 };
 
 type ApiContext = {
@@ -73,7 +74,13 @@ function createMockApi() {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const body: ApiCall["body"] = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined;
-    calls.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body });
+    calls.push({
+      method: req.method,
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams),
+      body,
+      userAgent: req.headers["user-agent"],
+    });
 
     const send = (status: number, payload: unknown, headers: OutgoingHttpHeaders = {}) => {
       res.writeHead(status, { "content-type": "application/json", ...headers });
@@ -1014,6 +1021,26 @@ test("API requests go through HTTP_PROXY, as curl's do, unless NO_PROXY lists th
       await runCli(["scenes", "content", "get", "scene_1"], { origin, env: { HTTP_PROXY: proxy.url, NO_PROXY: "127.0.0.1" } });
       assert.equal(proxy.requests.length, proxied);
       assert.equal(calls.length, 2);
+    });
+  } finally {
+    await proxy.close();
+  }
+});
+
+test("API requests identify the CLI and its version in the User-Agent, also through a proxy", async () => {
+  const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  // The pattern the API counts as CLI usage (excalidraw-plus apps/public-api/src/lib/requestUsage.ts).
+  const CLI_USER_AGENT = /^excalidraw-cli\/(\S+)/;
+  const proxy = await startProxy();
+  try {
+    await withApi(async ({ origin, calls }) => {
+      await runCli(["scenes", "content", "get", "scene_1"], { origin });
+      await runCli(["scenes", "content", "get", "scene_1"], { origin, env: { HTTP_PROXY: proxy.url } });
+      assert.ok(proxy.requests.length > 0);
+      for (const { userAgent } of calls) {
+        assert.equal(userAgent?.match(CLI_USER_AGENT)?.[1], version, userAgent);
+        assert.match(userAgent!, /^excalidraw-cli\/\S+ node\/\d+\.\d+\.\d+ [a-z0-9]+-[a-z0-9]+$/);
+      }
     });
   } finally {
     await proxy.close();
