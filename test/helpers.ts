@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createServer, request } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
@@ -14,6 +16,8 @@ type ExecError = Error & {
 // The CLI's own settings, except the browser path the render tests may need, and the color switches commander and chalk read.
 const CLI_SETTING = /^EXCALIDRAW_(?!BROWSER_PATH$)/;
 const COLOR_SWITCHES = new Set(["NO_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE"]);
+/** Proxy settings, which would send the tests' requests for local mock servers to the developer's proxy. */
+const PROXY_SETTING = /^(https?_proxy|all_proxy|no_proxy|node_use_env_proxy)$/i;
 /** A config directory that doesn't exist, so the key the developer saved with `excalidraw login` isn't used. Tests that log in pass their own. */
 const NO_CONFIG = join(tmpdir(), `excalidraw-cli-test-no-config-${process.pid}`);
 
@@ -22,7 +26,9 @@ const NO_CONFIG = join(tmpdir(), `excalidraw-cli-test-no-config-${process.pid}`)
  * Node's own warnings depend on the Node version and NODE_OPTIONS, not the CLI, so they're silenced for stderr assertions.
  */
 export function cliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-  const inherited = Object.entries(process.env).filter(([name]) => !CLI_SETTING.test(name) && !COLOR_SWITCHES.has(name));
+  const inherited = Object.entries(process.env).filter(
+    ([name]) => !CLI_SETTING.test(name) && !COLOR_SWITCHES.has(name) && !PROXY_SETTING.test(name),
+  );
   return { ...Object.fromEntries(inherited), NODE_NO_WARNINGS: "1", XDG_CONFIG_HOME: NO_CONFIG, ...env };
 }
 
@@ -61,4 +67,45 @@ export async function runWithStdout(
   });
   const [code] = await once(child, "close");
   return { code, stderr: stripVTControlCharacters(stderr) };
+}
+
+/**
+ * An HTTP proxy that records what it was asked for: absolute URLs it forwards, and the host:port
+ * of CONNECT tunnels, which clients may use for http: URLs too.
+ */
+export async function startProxy() {
+  const requests: string[] = [];
+  const server = createServer((req, res) => {
+    requests.push(req.url!);
+    const upstream = request(req.url!, { method: req.method, headers: req.headers }, (response) => {
+      res.writeHead(response.statusCode!, response.headers);
+      response.pipe(res);
+    });
+    upstream.on("error", () => res.writeHead(502).end());
+    req.pipe(upstream);
+  });
+  server.on("connect", (req, client, head) => {
+    requests.push(`CONNECT ${req.url}`);
+    const [host, port] = req.url!.split(":");
+    const target = connect(Number(port), host, () => {
+      client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      target.write(head);
+      target.pipe(client);
+      client.pipe(target);
+    });
+    target.on("error", () => client.destroy());
+    client.on("error", () => target.destroy());
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    requests,
+    close: () => {
+      server.closeAllConnections();
+      return new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
 }

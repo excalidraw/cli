@@ -29,13 +29,19 @@ function toJson(value: unknown) {
   return `${json}\n`;
 }
 
-export async function readJsonFile(path: string) {
+/** Reads a UTF-8 text file, or standard input for "-", without a leading byte order mark. */
+export async function readTextFile(path: string) {
   const text = path === STDIO_PATH ? await readStdin() : await readFile(path, "utf8");
+  // Windows editors and PowerShell's Out-File start UTF-8 files with a byte order mark.
+  return text.replace(/^﻿/, "");
+}
+
+export async function readJsonFile(path: string) {
+  const text = await readTextFile(path);
   const label = path === STDIO_PATH ? "stdin" : path;
 
   try {
-    // Windows editors and PowerShell's Out-File start UTF-8 files with a byte order mark, which JSON.parse rejects.
-    return JSON.parse(text.replace(/^﻿/, "")) as unknown;
+    return JSON.parse(text) as unknown;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid JSON";
     throw new Error(`Failed to parse JSON from ${label}: ${message}`);
@@ -44,7 +50,7 @@ export async function readJsonFile(path: string) {
 
 async function readStdin() {
   if (process.stdin.isTTY) {
-    throw new Error('The "-" input reads JSON from standard input; pipe or redirect a file into the command.');
+    throw new Error('The "-" input reads from standard input; pipe or redirect a file into the command.');
   }
 
   const chunks: Buffer[] = [];

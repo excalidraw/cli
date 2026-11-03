@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import { z } from "zod/v4";
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES, resolveConfig } from "./config.js";
+import { httpFetch } from "./http.js";
 
 import type { Command } from "commander";
 import type { GlobalOptions } from "./config.js";
@@ -117,7 +118,7 @@ export class PublicApiClient {
       let response: Response;
 
       try {
-        response = await fetch(url, {
+        response = await httpFetch(url, {
           method,
           headers: {
             Authorization: `Bearer ${this.apiKey}`,

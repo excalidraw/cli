@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import chalk from "chalk";
 import { cacheDirectory } from "./cache.js";
+import { httpFetch } from "./http.js";
 import { packageDirectory, packageJson } from "./package.js";
 
 const DEFAULT_REGISTRY = "https://registry.npmjs.org/";
@@ -103,7 +104,7 @@ export async function fetchLatestVersion(signal: AbortSignal) {
     `-/package/${packageJson.name.replace("/", "%2f")}/dist-tags`,
     registry.endsWith("/") ? registry : `${registry}/`,
   );
-  const response = await fetch(url, { headers: { Accept: "application/json" }, signal });
+  const response = await httpFetch(url, { headers: { Accept: "application/json" }, signal });
 
   if (!response.ok) {
     throw new Error(`${url.origin} answered HTTP ${response.status}`);

@@ -12,6 +12,8 @@ import {
   JsonObjectSchema,
   SceneCreateOptionsSchema,
   SceneListOptionsSchema,
+  SceneShareOptionsSchema,
+  SceneShareSlidesOptionsSchema,
   SceneUpdateOptionsSchema,
   parseOptions,
 } from "../schemas.js";
@@ -19,7 +21,7 @@ import {
 export function registerScenesCommands(program: Command) {
   const scenes = program
     .command("scenes")
-    .summary("List, create, update, delete, and edit workspace scenes")
+    .summary("List, create, update, share, delete, and edit workspace scenes")
     .description(
       "Work with Excalidraw scenes, including metadata, collection placement, and drawing content.",
     )
@@ -166,6 +168,67 @@ NOTES
     )
     .action(async (sceneId: string, _options, command: Command) => {
       const result = await getClient(command).request("DELETE", apiPath`/scenes/${sceneId}`);
+      emitOutput(command, result);
+    });
+
+  scenes
+    .command("share")
+    .summary("Turn a scene's public link on or off")
+    .description(
+      "Set what anyone with the scene's public link may do, and print the link. This is the link from the scene's Share dialog.",
+    )
+    .argument("<sceneId>", "scene ID to share")
+    .requiredOption("--access <access>", "view, edit, or none to turn the link off")
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes share <sceneId> --access view
+  $ excalidraw scenes share <sceneId> --access edit
+  $ excalidraw scenes share <sceneId> --access none
+  $ excalidraw scenes share <sceneId> --access view | jq -r .url
+
+NOTES
+  Anyone with the link can open the scene without signing in. With view or edit, they can also read and write comments.
+  The output is the link's access and its URL; url is null once the link is off.
+  Turning the link on fails with HTTP 403 when a workspace admin has disabled scene sharing.
+`,
+    )
+    .action(async (sceneId: string, options, command: Command) => {
+      const body = parseOptions(SceneShareOptionsSchema, options);
+      const result = await getClient(command).request("PUT", apiPath`/scenes/${sceneId}/link-sharing`, {
+        body,
+      });
+      emitOutput(command, result);
+    });
+
+  scenes
+    .command("share-slides")
+    .summary("Share a scene's frames as a presentation")
+    .description(
+      "Turn the scene's shared presentation link on, or off with --off, and print the link. Anyone with the link can step through the scene's frames as slides without signing in.",
+    )
+    .argument("<sceneId>", "scene ID whose frames to share")
+    .option("--off", "turn the shared slides link off", false)
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes share-slides <sceneId>
+  $ excalidraw scenes share-slides <sceneId> --off
+
+NOTES
+  Each frame in the scene is one slide. Sharing fails with HTTP 400 when the scene has no frames.
+  The link is created the first time and stays the same when sharing is turned off and on again.
+  The output says whether the slides are shared, and their URL; url is null while sharing is off.
+  Turning sharing on fails with HTTP 403 when a workspace admin has disabled scene sharing.
+`,
+    )
+    .action(async (sceneId: string, options, command: Command) => {
+      const { off } = parseOptions(SceneShareSlidesOptionsSchema, options);
+      const result = await getClient(command).request("PUT", apiPath`/scenes/${sceneId}/shared-slides`, {
+        body: { enabled: !off },
+      });
       emitOutput(command, result);
     });
 

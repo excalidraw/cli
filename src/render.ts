@@ -3,9 +3,11 @@ import { chromium, firefox } from "playwright-core";
 import { z } from "zod/v4";
 import { findBrowser } from "./browser.js";
 import { createFontLoader } from "./fonts.js";
+import { convertMermaidInBrowser } from "./mermaid-page.js";
 import { renderInBrowser } from "./render-page.js";
 
-import type { RenderOptions } from "./schemas.js";
+import type { Page } from "playwright-core";
+import type { ImageOptions } from "./schemas.js";
 
 const ElementSchema = z
   .object({
@@ -25,6 +27,10 @@ const FRAME_TYPES = new Set(["frame", "magicframe"]);
 // scripts/build-renderer.mjs points the renderer's fonts at this origin.
 const ORIGIN = "http://excalidraw-renderer.local";
 const FONT_PATH = /^\/fonts\/[0-9a-f]{64}\.woff2$/;
+// The font-subsetting WebAssembly SVG exports use, served as base64 (see scripts/build-renderer.mjs).
+const WASM_PATH = /^\/wasm\/\d+$/;
+const RENDERER_URL = `${ORIGIN}/renderer.js`;
+const MERMAID_URL = `${ORIGIN}/mermaid.js`;
 
 const SceneSchema = z.object({
   elements: z.array(ElementSchema),
@@ -33,36 +39,30 @@ const SceneSchema = z.object({
   filesFailedToEmbed: z.array(z.string()).optional(),
 });
 
-export type RenderScene = z.infer<typeof SceneSchema> & {
-  frame?: z.infer<typeof ElementSchema>;
-};
+export type RenderElement = z.infer<typeof ElementSchema>;
 
-function prepareScene(input: unknown, frameId?: string): RenderScene {
+export type RenderScene = Omit<z.infer<typeof SceneSchema>, "filesFailedToEmbed">;
+
+export type RenderFormat = "png" | "svg";
+
+export const MIME_TYPES: Record<RenderFormat, string> = { png: "image/png", svg: "image/svg+xml" };
+
+/** The live elements of a scene, and the embedded files its images use. */
+export function prepareScene(input: unknown): RenderScene {
   const scene = SceneSchema.parse(input);
-  scene.elements = scene.elements.filter((element) => !element.isDeleted);
-  if (scene.elements.length === 0) {
+  const elements = scene.elements.filter((element) => !element.isDeleted);
+  if (elements.length === 0) {
     throw new Error("Cannot render an empty scene.");
   }
   // Only live images need their files. filesFailedToEmbed can also name files nothing uses anymore,
   // such as those of deleted images, which don't affect the render.
-  const images = scene.elements.filter((element) => element.type === "image");
+  const images = elements.filter((element) => element.type === "image");
   const usedFileIds = new Set(images.map((element) => element.fileId));
   const failed = scene.filesFailedToEmbed?.filter((fileId) => usedFileIds.has(fileId)) ?? [];
   if (failed.length > 0) {
     throw new Error(
       `Scene images could not be embedded: ${failed.join(", ")}. Fetch the scene again before rendering.`,
     );
-  }
-
-  const frame =
-    frameId === undefined
-      ? undefined
-      : scene.elements.find((element) => element.id === frameId && FRAME_TYPES.has(element.type));
-  if (frameId !== undefined && !frame) {
-    throw new Error(`Frame not found: ${frameId}`);
-  }
-  if (frame && (frame.width === 0 || frame.height === 0)) {
-    throw new Error(`Frame has no area: ${frameId}`);
   }
 
   // Only send files used by live image elements to the browser.
@@ -83,12 +83,38 @@ function prepareScene(input: unknown, frameId?: string): RenderScene {
     files[fileId as string] = file;
   }
 
-  return {
-    ...scene,
-    files,
-    frame,
-    elements: frame ? scene.elements.filter((element) => !FRAME_TYPES.has(element.type)) : scene.elements,
+  return { elements, appState: scene.appState, files };
+}
+
+export function findFrame(scene: RenderScene, frameId: string) {
+  const frame = scene.elements.find((element) => element.id === frameId && FRAME_TYPES.has(element.type));
+  if (!frame) {
+    throw new Error(`Frame not found: ${frameId}`);
+  }
+  if (frame.width === 0 || frame.height === 0) {
+    throw new Error(`Frame has no area: ${frameId}`);
+  }
+  return frame;
+}
+
+/**
+ * The scene's frames in presentation order, as Excalidraw+ plays them as slides: by
+ * customData.slidesOrder, then in scene order. Frames without area hold nothing to draw.
+ */
+export function orderedFrames(scene: RenderScene) {
+  const slidesOrder = (frame: RenderElement) => {
+    const customData = frame.customData;
+    const order =
+      customData && typeof customData === "object" && "slidesOrder" in customData ? customData.slidesOrder : undefined;
+    return typeof order === "number" ? order : Number.MAX_SAFE_INTEGER;
   };
+  const frames = scene.elements
+    .filter((element) => FRAME_TYPES.has(element.type) && element.width > 0 && element.height > 0)
+    .sort((a, b) => slidesOrder(a) - slidesOrder(b));
+  if (frames.length === 0) {
+    throw new Error("The scene has no frames to render.");
+  }
+  return frames;
 }
 
 const MAX_BROWSER_OUTPUT_LINES = 10;
@@ -109,12 +135,20 @@ function describeLaunchError(error: unknown) {
   ].join("\n");
 }
 
-/** The browser receives only scene data and the public renderer, never API credentials. */
-export async function renderPng(input: unknown, options: RenderOptions) {
-  const scene = prepareScene(input, options.frameId);
+type BrowserOptions = Pick<ImageOptions, "browserPath" | "timeout" | "fontsUrl">;
+
+/**
+ * Starts a browser, opens a page that can load the renderer (and the Mermaid converter), and runs
+ * `fn` in it. Startup, font downloads and `fn` share options.timeout. The browser receives only
+ * scene data and the public renderer, never API credentials.
+ */
+async function withRenderPage<T>(options: BrowserOptions, fn: (page: Page) => Promise<T>) {
   const { path: executablePath, kind } = await findBrowser(options.browserPath);
-  // The build writes the @excalidraw/utils browser bundle and its fonts next to this file.
-  const rendererSource = await readFile(new URL("./renderer.js", import.meta.url));
+  // The build writes the @excalidraw/utils browser bundle, the Mermaid converter and the fonts next to this file.
+  const modules = new Map([
+    ["/renderer.js", () => readFile(new URL("./renderer.js", import.meta.url))],
+    ["/mermaid.js", () => readFile(new URL("./mermaid.js", import.meta.url))],
+  ]);
   const deadline = Date.now() + options.timeout;
   // Font downloads get half the deadline, which leaves time to draw with fallback glyphs if a mirror hangs.
   const fonts = createFontLoader({
@@ -142,7 +176,7 @@ export async function renderPng(input: unknown, options: RenderOptions) {
       );
     });
   let timer: NodeJS.Timeout | undefined;
-  let result: Awaited<ReturnType<typeof renderInBrowser>>;
+  let result: T;
 
   try {
     result = await Promise.race([
@@ -150,6 +184,7 @@ export async function renderPng(input: unknown, options: RenderOptions) {
         const page = await browser.newPage({ serviceWorkers: "block" });
         await page.route("**/*", async (route) => {
           const url = new URL(route.request().url());
+          const module = modules.get(url.pathname);
           if (url.origin !== ORIGIN) {
             await route.abort();
           } else if (url.pathname === "/") {
@@ -157,8 +192,11 @@ export async function renderPng(input: unknown, options: RenderOptions) {
               contentType: "text/html",
               body: '<!doctype html><meta charset="utf-8"><title>Excalidraw render</title>',
             });
-          } else if (url.pathname === "/renderer.js") {
-            await route.fulfill({ contentType: "text/javascript", body: rendererSource });
+          } else if (module) {
+            await route.fulfill({ contentType: "text/javascript", body: await module() });
+          } else if (WASM_PATH.test(url.pathname)) {
+            const wasm = await readFile(new URL(`.${url.pathname}.wasm`, import.meta.url));
+            await route.fulfill({ contentType: "text/plain", body: wasm.toString("base64") });
           } else if (FONT_PATH.test(url.pathname)) {
             // The browser only requests the fonts the scene's text needs. A missing font makes it
             // fall back to the next family. Errors after a timeout closed the page are moot.
@@ -171,11 +209,7 @@ export async function renderPng(input: unknown, options: RenderOptions) {
           }
         });
         await page.goto(`${ORIGIN}/`);
-        return page.evaluate(renderInBrowser, {
-          scene,
-          options,
-          moduleUrl: `${ORIGIN}/renderer.js`,
-        });
+        return fn(page);
       })(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
@@ -194,11 +228,95 @@ export async function renderPng(input: unknown, options: RenderOptions) {
     await browser.close();
   }
 
-  const png = Buffer.from(result.png, "base64");
-  if (!png.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) {
-    throw new Error(
-      "The browser could not encode the scene as PNG. Try smaller output dimensions.",
-    );
-  }
-  return { png, width: result.width, height: result.height, warning: fonts.warning() };
+  return { result, warning: fonts.warning() };
+}
+
+export type RenderedImage = { data: Buffer; width: number; height: number; frame: RenderElement | null };
+
+/** Draws the scene in the page once per entry of `frames` (null for the whole scene). */
+async function renderInPage(
+  page: Page,
+  scene: RenderScene,
+  frames: (RenderElement | null)[],
+  format: RenderFormat,
+  options: ImageOptions,
+): Promise<RenderedImage[]> {
+  const results = await page.evaluate(renderInBrowser, {
+    scene,
+    frames,
+    format,
+    options: {
+      padding: options.padding,
+      scale: options.scale,
+      maxWidth: options.maxWidth,
+      maxHeight: options.maxHeight,
+      theme: options.theme,
+      transparent: options.transparent,
+    },
+    moduleUrl: RENDERER_URL,
+  });
+  return results.map((result, index) => {
+    const data = format === "png" ? Buffer.from(result.data, "base64") : Buffer.from(result.data, "utf8");
+    if (format === "png" && !data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) {
+      throw new Error("The browser could not encode the scene as PNG. Try smaller output dimensions.");
+    }
+    return { data, width: result.width, height: result.height, frame: frames[index]! };
+  });
+}
+
+/** Renders a scene, one frame of it, or each of its frames, in one browser session. */
+export async function renderScene(
+  input: unknown,
+  options: ImageOptions & { format: RenderFormat; frameId?: string; allFrames?: boolean },
+) {
+  const scene = prepareScene(input);
+  const frames = options.allFrames
+    ? orderedFrames(scene)
+    : [options.frameId === undefined ? null : findFrame(scene, options.frameId)];
+  const { result, warning } = await withRenderPage(options, (page) =>
+    renderInPage(page, scene, frames, options.format, options),
+  );
+  return { images: result, warning };
+}
+
+export type MermaidOptions = BrowserOptions & {
+  elbow: boolean;
+  fontSize?: number;
+};
+
+/**
+ * Converts a Mermaid definition into Excalidraw elements as the editor's Mermaid import does, and
+ * optionally renders the result in the same browser session.
+ */
+export async function convertMermaid(
+  definition: string,
+  options: MermaidOptions,
+  render?: { format: RenderFormat; options: ImageOptions },
+) {
+  return withRenderPage(options, async (page) => {
+    const converted = await page.evaluate(convertMermaidInBrowser, {
+      definition,
+      config: {
+        elbow: options.elbow,
+        ...(options.fontSize !== undefined && { themeVariables: { fontSize: `${options.fontSize}px` } }),
+      },
+      mermaidUrl: MERMAID_URL,
+      rendererUrl: RENDERER_URL,
+    });
+    if ("error" in converted) {
+      throw new Error(`Could not convert the Mermaid diagram: ${converted.error}`);
+    }
+    const scene = {
+      type: "excalidraw",
+      version: 2,
+      source: "https://github.com/excalidraw/cli",
+      elements: converted.elements,
+      appState: { viewBackgroundColor: "#ffffff", gridSize: 20 },
+      files: converted.files,
+    };
+    const [image] = render
+      ? await renderInPage(page, prepareScene(scene), [null], render.format, render.options)
+      : [];
+    return { scene, image };
+  });
 }

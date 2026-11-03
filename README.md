@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@excalidraw/cli)](https://www.npmjs.com/package/@excalidraw/cli)
 [![license](https://img.shields.io/npm/l/@excalidraw/cli)](LICENSE)
 
-Manage your [Excalidraw+](https://plus.excalidraw.com) workspace from the terminal, and render any `.excalidraw` file to PNG. Rendering runs locally and needs no account.
+Manage your [Excalidraw+](https://plus.excalidraw.com) workspace from the terminal, render any `.excalidraw` file to PNG or SVG, and turn Mermaid diagrams into Excalidraw scenes. Rendering and Mermaid conversion run locally and need no account.
 
 ```console
 $ excalidraw scenes list --limit 3 -o table
@@ -45,21 +45,34 @@ excalidraw scenes create --name "Architecture" --collection-id <collectionId> --
 # Save a scene's content, or render it straight to PNG
 excalidraw scenes content get <sceneId> --out scene.json
 excalidraw scenes render <sceneId> --out scene.png
+
+# Share it with anyone who has the link
+excalidraw scenes share <sceneId> --access view
 ```
 
 Every command has `--help` with examples, for instance `excalidraw scenes content patch --help`.
 
-## Render to PNG
+## Render to PNG or SVG
 
-`render` turns a local file into a PNG, no API key needed. `scenes render` does the same for a scene in your workspace.
+`render` turns a local file into a PNG or SVG, no API key needed. `scenes render` does the same for a scene in your workspace.
 
 ```bash
 excalidraw render drawing.excalidraw --out drawing.png
+excalidraw render drawing.excalidraw --out drawing.svg --theme dark
 cat drawing.excalidraw | excalidraw render - --out drawing.png
 excalidraw scenes render <sceneId> --frame-id <frameId> --out frame.png
 ```
 
-With a file path, the command prints the PNG's path and dimensions as JSON. Pass `--out -` to write the PNG to stdout instead, for example to pipe it into another program:
+The format follows the `--out` extension, `.png` or `.svg`, or `--format`. SVGs embed the fonts their text uses, cut down to the characters it needs, so they look the same wherever they're opened.
+
+`--all-frames` renders each frame to its own file, for example a deck's slides. Files are numbered in presentation order and named after their frames, and the command prints them as JSON:
+
+```bash
+excalidraw scenes render <sceneId> --all-frames --out slides/
+# slides/01-title.png, slides/02-agenda.png, ...
+```
+
+With a file path, the command prints the image's path and dimensions as JSON. Pass `--out -` to write the image to stdout instead, for example to pipe it into another program:
 
 ```bash
 node generate-scene.js | excalidraw render - --out - > drawing.png
@@ -70,19 +83,56 @@ Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or 
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `--out <file>` | required | File path, or `-` for stdout. |
+| `--out <file>` | required | File path, or `-` for stdout. A directory with `--all-frames`. |
+| `--format <png\|svg>` | `--out` extension, else `png` | |
 | `--frame-id <id>` | | Render just this frame. |
+| `--all-frames` | off | Render each frame to its own file in the `--out` directory. |
 | `--scale <n>` | `1` | Resolution multiplier, up to 16. |
-| `--max-width`, `--max-height` | `2048` | Size limits in pixels, up to 16384. Raise them along with `--scale`. |
+| `--max-width`, `--max-height` | `2048` | PNG size limits in pixels, up to 16384. Raise them along with `--scale`. |
 | `--padding <px>` | `20` | Ignored for frames. |
 | `--theme <light\|dark>` | scene setting | |
 | `--transparent` | off | Transparent background. |
 | `--timeout <ms>` | `30000` | How long a render may take. |
 
 - Images must be embedded in the file. Image URLs and website embeds aren't loaded.
-- The output keeps the scene's aspect ratio and stays under 64 megapixels.
-- Chinese, Japanese and Korean text in the hand-drawn font needs a font that's downloaded the first time a scene uses it, then cached. Without network access, that text uses a system font. `--fonts-url` sets other download locations, or `none` to turn downloads off.
+- PNGs keep the scene's aspect ratio and stay under 64 megapixels.
+- Chinese, Japanese and Korean text in the hand-drawn font, Excalifont, is drawn in Xiaolai, which is downloaded the first time a scene uses it, then cached. Without network access, that text uses a system font. As in Excalidraw itself, CJK text in the other fonts, such as Virgil or Comic Shanns, always uses a system font. See [CJK fonts](#cjk-fonts) for proxies, mirrors and offline use.
 - Emoji come from your system's fonts.
+
+### CJK fonts
+
+The CLI downloads Xiaolai's files from Excalidraw's CDN, then [npmmirror](https://npmmirror.com), then jsDelivr, whichever answers first, and checks each file against its SHA-256. If a download fails, the command still renders and prints a warning naming the reason.
+
+- Behind a proxy, set `HTTPS_PROXY` (or `HTTP_PROXY`) as you would for curl. `NO_PROXY` lists hosts to reach directly. This applies to API requests and the update check too. SOCKS proxies aren't supported.
+- `--fonts-url` (or `EXCALIDRAW_FONTS_URL`) replaces the download locations with your own: comma-separated URLs that mirror `@excalidraw/excalidraw@0.18.1`'s `dist/prod/` folder, or `none` to turn downloads off.
+- For offline use, point `--fonts-url` at a local copy of that folder. Files are read from it directly, not copied to the cache:
+
+```bash
+mkdir -p ~/excalidraw-fonts && cd ~/excalidraw-fonts
+npm pack @excalidraw/excalidraw@0.18.1 --registry https://registry.npmmirror.com
+tar -xzf excalidraw-excalidraw-0.18.1.tgz
+export EXCALIDRAW_FONTS_URL=~/excalidraw-fonts/package/dist/prod
+```
+
+## Mermaid diagrams
+
+`mermaid` converts a [Mermaid](https://mermaid.js.org) definition into editable Excalidraw shapes and arrows, as the editor's Mermaid import does, and saves it as a scene or renders it. Diagrams are laid out by [Pele](https://pele.run). It runs locally with the same browser as `render`, no API key needed.
+
+```bash
+excalidraw mermaid flow.mmd --out flow.excalidraw
+excalidraw mermaid flow.mmd --out flow.svg --elbow
+echo "graph LR; A-->B" | excalidraw mermaid - --out - > flow.excalidraw
+
+# Put the result in your workspace
+excalidraw mermaid flow.mmd --out flow.excalidraw
+excalidraw scenes create --name "Flow" --collection-id <collectionId> --file flow.excalidraw
+```
+
+- The format follows the `--out` extension (`.excalidraw`, `.json`, `.png`, `.svg`) or `--format`.
+- Flowcharts (including `swimlane-beta`), sequence, class, ER and state diagrams become editable elements. Other types, such as gantt and pie, become one image.
+- `--elbow` draws flowchart edges and state transitions as elbow arrows. `--font-size` sets the text size (default 20).
+- The `render` image options, such as `--scale` and `--theme`, apply to PNG and SVG output.
+- A syntax error fails the command with the line to fix.
 
 ## Commands
 
@@ -92,9 +142,12 @@ Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or 
 | `logout` | Remove the saved API key |
 | `whoami` | Show the workspace, key type, credential source and API origin in use |
 | `scenes` | List, create, rename, move, pin and trash scenes |
+| `scenes share` | Turn a scene's public view or edit link on or off |
+| `scenes share-slides` | Share a scene's frames as a presentation link |
 | `scenes content` | Read, replace or patch a scene's drawing |
-| `scenes render` | Render a workspace scene to PNG |
-| `render` | Render a local file to PNG |
+| `scenes render` | Render a workspace scene to PNG or SVG |
+| `render` | Render a local file to PNG or SVG |
+| `mermaid` | Convert a Mermaid diagram into an Excalidraw scene, PNG or SVG |
 | `collections` | Manage collections and the scenes in them |
 | `workspace` | Read or update the workspace name and picture |
 | `workspace users` | List, update or remove members |
@@ -143,9 +196,11 @@ These flags can also be set with environment variables.
 | `--retries` | `EXCALIDRAW_RETRIES` | `3` |
 | `--request-timeout` | `EXCALIDRAW_REQUEST_TIMEOUT` | `60000` ms |
 | `--browser-path` | `EXCALIDRAW_BROWSER_PATH` | detected |
-| `--fonts-url` | `EXCALIDRAW_FONTS_URL` | Excalidraw's CDN |
+| `--fonts-url` | `EXCALIDRAW_FONTS_URL` | Excalidraw's CDN, npmmirror, jsDelivr |
 
 For a self-hosted or staging instance, set `--api-url` to the origin, without `/api/v1`.
+
+Requests go through the proxy `HTTPS_PROXY` or `HTTP_PROXY` names, except to hosts `NO_PROXY` lists.
 
 ### API keys
 

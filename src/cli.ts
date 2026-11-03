@@ -5,7 +5,7 @@ import { registerLogsCommands } from "./commands/logs.js";
 import { registerScenesCommands } from "./commands/scenes.js";
 import { registerWhoamiCommand } from "./commands/whoami.js";
 import { registerWorkspaceCommands } from "./commands/workspace.js";
-import { registerRenderCommand } from "./commands/render.js";
+import { registerMermaidCommand, registerRenderCommand } from "./commands/render.js";
 import { registerUpdateCommand } from "./commands/update.js";
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES } from "./config.js";
 import { packageJson } from "./package.js";
@@ -16,7 +16,7 @@ export function createProgram() {
 
   program
     .name("excalidraw")
-    .description("Manage Excalidraw workspace resources and render scenes locally.")
+    .description("Manage Excalidraw workspace resources, render scenes, and convert Mermaid diagrams locally.")
     .version(packageJson.version, "-v, --version", "print the CLI version")
     .commandsGroup("CORE COMMANDS")
     .optionsGroup("GLOBAL FLAGS")
@@ -67,17 +67,18 @@ EXAMPLES
   $ excalidraw scenes content get <sceneId> --out scene.json
   $ excalidraw scenes render <sceneId> --out scene.png
   $ excalidraw render drawing.excalidraw --out drawing.png
+  $ excalidraw mermaid flow.mmd --out flow.svg
   $ excalidraw logs list --operation update --limit 10
 
 SETUP
   Run "excalidraw login" once to save an API key. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead; both take precedence over the saved key.
-  Local "render" commands do not require an API key.
+  Local "render" and "mermaid" commands do not require an API key.
   Use --api-url for development, staging, or self-hosted API origins. Pass the origin only; /api/v1 is added automatically. Saved keys are per origin.
   Run "excalidraw whoami" to confirm which workspace, key type and credential source the CLI is using.
 
 OUTPUT
   Commands print formatted JSON by default. Use --output table for readable lists, or --raw for the raw API response text.
-  Render commands with --out - write only binary PNG to stdout, without a JSON summary.
+  Render and mermaid commands with --out - write only the image or scene to stdout, without a JSON summary.
   List commands accept --all to fetch every page. Retry notices are written to stderr so stdout stays machine-readable.
 
 LEARN MORE
@@ -108,6 +109,7 @@ LEARN MORE
   registerWhoamiCommand(program);
   registerScenesCommands(program);
   registerRenderCommand(program);
+  registerMermaidCommand(program);
   registerCollectionsCommands(program);
   registerWorkspaceCommands(program);
   registerLogsCommands(program);

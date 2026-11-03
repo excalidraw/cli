@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { z } from "zod/v4";
 
 /**
@@ -58,6 +60,14 @@ export const SceneUpdateOptionsSchema = z
     message: "Provide at least one of --name, --collection-id, or --pinned.",
   });
 
+export const SceneShareOptionsSchema = z.object({
+  access: z.enum(["view", "edit", "none"]),
+});
+
+export const SceneShareSlidesOptionsSchema = z.object({
+  off: z.boolean().default(false),
+});
+
 export const ContentFileOptionsSchema = z.object({
   file: z.string().min(1),
 });
@@ -66,9 +76,10 @@ export const ContentGetOptionsSchema = z.object({
   out: z.string().min(1).optional(),
 });
 
-export const RenderOptionsSchema = z.object({
+export const ImageFormatSchema = z.enum(["png", "svg"]);
+
+const ImageOptionsSchema = z.object({
   out: z.string().min(1),
-  frameId: z.string().min(1).optional(),
   padding: z.coerce.number().int().min(0).max(1000).default(20),
   scale: z.coerce.number().positive().max(16).default(1),
   maxWidth: z.coerce.number().int().min(1).max(16384).default(2048),
@@ -80,23 +91,51 @@ export const RenderOptionsSchema = z.object({
     z.string().min(1).optional(),
   ),
   timeout: z.coerce.number().int().min(1).max(600000).default(30000),
-  // Comma-separated base URLs that mirror the font release, or "none" to disable downloads.
+  // Comma-separated mirrors of the font release's dist/prod/ folder: http(s) URLs, local folders or
+  // file: URLs, or "none" to disable downloads. Folders become file: URLs.
   fontsUrl: z.preprocess(
     (value) => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined),
     z
       .string()
       .transform((value) =>
-        value === "none" ? [] : value.split(",").map((url) => url.trim().replace(/\/?$/, "/")),
+        value === "none"
+          ? []
+          : value.split(",").map((entry) => {
+              const mirror = entry.trim();
+              // A scheme, but not a Windows drive letter such as C:\fonts.
+              const url = /^[a-z][a-z0-9+.-]+:/i.test(mirror) ? mirror : pathToFileURL(resolve(mirror)).href;
+              return url.replace(/\/?$/, "/");
+            }),
       )
       .refine(
-        (urls) => urls.every((url) => URL.canParse(url) && /^https?:$/.test(new URL(url).protocol)),
-        "expected http(s) URLs separated by commas, or none",
+        (urls) => urls.every((url) => URL.canParse(url) && /^(https?|file):$/.test(new URL(url).protocol)),
+        "expected http(s) URLs or folders separated by commas, or none",
       )
       .optional(),
   ),
 });
 
+export type ImageOptions = z.infer<typeof ImageOptionsSchema>;
+
+export const RenderOptionsSchema = ImageOptionsSchema.extend({
+  format: ImageFormatSchema.optional(),
+  frameId: z.string().min(1).optional(),
+  allFrames: z.boolean().default(false),
+})
+  .refine((value) => !(value.allFrames && value.frameId !== undefined), {
+    message: "Use either --frame-id or --all-frames, not both.",
+  })
+  .refine((value) => !(value.allFrames && value.out === "-"), {
+    message: "--all-frames writes one file per frame; pass a directory to --out.",
+  });
+
 export type RenderOptions = z.infer<typeof RenderOptionsSchema>;
+
+export const MermaidOptionsSchema = ImageOptionsSchema.extend({
+  format: z.enum(["excalidraw", ...ImageFormatSchema.options]).optional(),
+  elbow: z.boolean().default(false),
+  fontSize: z.coerce.number().int().min(8).max(200).optional(),
+});
 
 export const JsonObjectSchema = z.record(z.string(), z.unknown());
 

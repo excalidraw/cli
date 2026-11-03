@@ -41,12 +41,20 @@ test("render rejects invalid scenes and options without changing the output file
     {
       scene: fixture,
       args: ["--fonts-url", "https://mirror.example/, ftp://mirror.example/"],
-      error: /^--fonts-url: expected http\(s\) URLs separated by commas, or none/m,
+      error: /^--fonts-url: expected http\(s\) URLs or folders separated by commas, or none/m,
     },
     {
       scene: fixture,
       args: ["--browser-path", join(directory, "missing-browser")],
       error: /Browser executable not found/,
+    },
+    { scene: fixture, args: ["--format", "svg"], error: /--format svg doesn't match --out .*scene\.png/ },
+    { scene: fixture, args: ["--format", "jpeg"], error: /^--format: /m },
+    { scene: fixture, args: ["--all-frames", "--frame-id", "frame"], error: /Use either --frame-id or --all-frames/ },
+    {
+      scene: { ...fixture, elements: fixture.elements.filter((element) => element.type !== "frame") },
+      args: ["--all-frames"],
+      error: /The scene has no frames to render/,
     },
   ];
   for (const item of cases) {
@@ -141,5 +149,41 @@ test("--out - refuses to write PNG bytes to a terminal before reading input or c
       assert.match(error.stderr, /--out - writes binary PNG to standard output; pipe it into another command or redirect it to a file\./);
       return true;
     });
+  }
+});
+
+test("--all-frames needs a directory, not stdout", async () => {
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, "render", "-", "--all-frames", "--out", "-"], { env: cliEnv() }),
+    (error: unknown) => {
+      assertExecError(error);
+      assert.match(error.stderr, /--all-frames writes one file per frame; pass a directory to --out/);
+      return true;
+    },
+  );
+});
+
+test("mermaid rejects empty input and conflicting formats before starting a browser", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-validation-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const input = join(directory, "flow.mmd");
+  const cases = [
+    { definition: "  \n", args: ["--out", join(directory, "flow.excalidraw")], error: /The Mermaid definition is empty/ },
+    { definition: "graph LR; A-->B", args: ["--out", join(directory, "flow.png"), "--format", "svg"], error: /--format svg doesn't match/ },
+    { definition: "graph LR; A-->B", args: ["--out", join(directory, "flow.png"), "--font-size", "2"], error: /^--font-size: Too small/m },
+  ];
+  for (const item of cases) {
+    await writeFile(input, item.definition);
+    await assert.rejects(
+      execFileAsync(process.execPath, [cliPath, "mermaid", input, ...item.args, "--browser-path", "missing-browser"], {
+        env: cliEnv({ EXCALIDRAW_BROWSER_PATH: "" }),
+      }),
+      (error: unknown) => {
+        assertExecError(error);
+        assert.equal(error.code, 1);
+        assert.match(error.stderr, item.error);
+        return true;
+      },
+    );
   }
 });
