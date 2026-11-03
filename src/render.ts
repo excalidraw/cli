@@ -135,6 +135,8 @@ function describeLaunchError(error: unknown) {
   ].join("\n");
 }
 
+const BROWSER_HIDDEN_PROXY = /^(https?_proxy|all_proxy|no_proxy)$/i;
+
 type BrowserOptions = Pick<ImageOptions, "browserPath" | "timeout" | "fontsUrl">;
 
 /**
@@ -162,10 +164,12 @@ async function withRenderPage<T>(options: BrowserOptions, fn: (page: Page) => Pr
       channel: kind === "firefox" ? "moz-firefox" : undefined,
       headless: true,
       timeout: options.timeout,
+      // Without the API key, and without proxy settings: the page gets everything through
+      // page.route(), so all a proxy would see is the browser's own background requests.
       env: Object.fromEntries(
         Object.entries(process.env).filter(
           (entry): entry is [string, string] =>
-            entry[0] !== "EXCALIDRAW_API_KEY" && entry[1] !== undefined,
+            entry[0] !== "EXCALIDRAW_API_KEY" && !BROWSER_HIDDEN_PROXY.test(entry[0]) && entry[1] !== undefined,
         ),
       ),
     })

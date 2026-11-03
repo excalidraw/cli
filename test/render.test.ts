@@ -311,6 +311,7 @@ test("font downloads go through HTTP_PROXY, except to hosts NO_PROXY lists", asy
   });
   assert.equal(proxied.stderr.toString(), "");
   assert.ok(proxy.requests.length > 0, "the downloads went through the proxy");
+  // Only the CLI's downloads: the browser gets no proxy settings, so its own background requests stay off the proxy.
   assert.ok(proxy.requests.every((request) => request.includes(mirrorHost)), proxy.requests.join(", "));
   const downloads = mirror.requests.length;
   assert.ok(downloads > 0);
