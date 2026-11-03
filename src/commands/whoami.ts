@@ -42,10 +42,8 @@ EXAMPLES
   $ excalidraw whoami --api-key uk-... --api-url https://staging.example.com
 
 NOTES
-  Run this first when a command fails with HTTP 401 or 403. It shows which workspace the key
-  belongs to and whether it is a personal (uk-) or workspace key.
-  credentialSource is "flag" for --api-key, "env" for EXCALIDRAW_API_KEY, or "login" for the
-  key that "excalidraw login" saved. The flag and the variable take precedence over a saved key.
+  Run this first when a command fails with HTTP 401 or 403. It shows which workspace the key belongs to and whether it is a personal (uk-) or workspace key.
+  credentialSource is "flag" for --api-key, "env" for EXCALIDRAW_API_KEY, or "login" for the key that "excalidraw login" saved. The flag and the variable take precedence over a saved key.
   A workspace key limited to certain permissions can get HTTP 403 here even though it is valid.
 `,
     )

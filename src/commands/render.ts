@@ -12,9 +12,7 @@ import type { RenderOptions } from "../schemas.js";
 const STDOUT_NOTES = `  With --out -, stdout contains only PNG bytes, with no JSON summary, even with --raw or --output table.
   Errors and retry notices go to stderr. Pipe stdout to an image consumer or redirect it to a file.`;
 
-const FONT_NOTES = `  Excalidraw's fonts ship with the CLI, except the hand-drawn CJK font. The files a scene's text
-  needs are downloaded on first use, checked, and cached; without network access that text
-  uses a system font. Set --fonts-url to use your own mirror.`;
+const FONT_NOTES = `  Excalidraw's fonts ship with the CLI, except the hand-drawn CJK font. The files a scene's text needs are downloaded on first use, checked, and cached; without network access that text uses a system font. Set --fonts-url to use your own mirror.`;
 
 function withRenderOptions(command: Command) {
   return command

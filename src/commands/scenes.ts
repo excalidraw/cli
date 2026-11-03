@@ -111,12 +111,9 @@ EXAMPLES
 
 NOTES
   Without --file the created scene starts empty; add canvas JSON later with "scenes content put" or "scenes content patch".
-  With --file, a full Excalidraw export (type: "excalidraw") replaces the empty scene via PUT, and a partial
-  payload with elements, appState, or files is merged via PATCH. The file is validated before the scene is created;
-  a full export's missing version, source, appState, and files are filled in.
+  With --file, a full Excalidraw export (type: "excalidraw") replaces the empty scene via PUT, and a partial payload with elements, appState, or files is merged via PATCH. The file is validated before the scene is created; a full export's missing version, source, appState, and files are filled in.
   If writing content fails, the error names the created scene ID so you can retry with "scenes content put".
-  The API requires a collection. Workspace API keys must pass a real collection ID;
-  personal (uk-) API keys may also pass "private" for the key owner's private collection.
+  The API requires a collection. Workspace API keys must pass a real collection ID; personal (uk-) API keys may also pass "private" for the key owner's private collection.
 `,
     )
     .action(async (options, command: Command) => {
@@ -239,8 +236,7 @@ EXAMPLES
 
 NOTES
   This is a full replacement: elements not present in the file are removed from the scene.
-  The file must contain elements. Missing type, version, source, appState, and files are filled in,
-  and the file is checked before anything is sent.
+  The file must contain elements. Missing type, version, source, appState, and files are filled in, and the file is checked before anything is sent.
   The server recomputes sceneVersion and ignores any sceneVersion value in the file.
   Connected editors are forced to reload. For most automated edits, use patch instead.
 `,

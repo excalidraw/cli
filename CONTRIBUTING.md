@@ -10,6 +10,8 @@ pnpm run typecheck   # typecheck src/ and test/
 
 esbuild bundles `src/` with chalk, commander and zod into `dist/main.js` plus lazily loaded chunks, so playwright-core is the only runtime dependency. Keep those libraries in `devDependencies`. playwright-core is pinned to an exact version because it drives whatever Chrome the user has installed; bump it on purpose and run `pnpm run test:render` before releasing. The build also turns the prebuilt browser bundle from `@excalidraw/utils` into `dist/renderer.js` (see `scripts/build-renderer.mjs`), so users don't install the whole package. Its inlined fonts become files in `dist/fonts/` that the browser requests only when a scene needs them, and the font-subsetting WebAssembly, which only SVG export uses, is dropped. Xiaolai, the 13 MB CJK font, doesn't ship: `dist/fonts/remote.json` lists its files, which the CLI downloads from CDN mirrors on first use, checks against their sha256, and caches. `scripts/fonts.json` identifies each font by sha256 and gives its path in the `@excalidraw/excalidraw` release the mirrors serve.
 
+The build also writes `dist/reference.json`, every command's usage, arguments, options, examples and notes (see `src/reference.ts`). The [CLI docs](https://plus.excalidraw.com/docs/cli) are generated from the published package's copy and from this repository's README, so a release updates them: keep the README's section headings stable, and write each help line as one complete example or note.
+
 To update the renderer, bump its pinned version in `devDependencies`, run `node scripts/update-fonts.mjs @excalidraw/excalidraw@<version>` with a release that ships the same fonts, and rebuild. The build fails if the bundle's layout changed.
 
 ## Tests

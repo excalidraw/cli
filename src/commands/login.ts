@@ -62,8 +62,7 @@ EXAMPLES
   $ excalidraw logout --api-url https://staging.example.com
 
 NOTES
-  logout prints a confirmation, not JSON, and succeeds when no key was saved. The key itself
-  stays valid: to revoke it, delete it in Excalidraw+.
+  logout prints a confirmation, not JSON, and succeeds when no key was saved. The key itself stays valid: to revoke it, delete it in Excalidraw+.
 `,
     )
     .action(async (_options, command: Command) => {
