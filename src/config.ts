@@ -5,7 +5,7 @@ import { emptyToUndefined } from "./schemas.js";
 import type { Command } from "commander";
 import type { $ZodIssue } from "zod/v4/core";
 
-const DEFAULT_API_URL = "https://api.excalidraw.com";
+export const DEFAULT_API_URL = "https://api.excalidraw.com";
 const API_PREFIX_PATTERN = /\/api\/v1\/*$/i;
 export const DEFAULT_RETRIES = 3;
 const MAX_RETRIES = 10;
@@ -88,6 +88,7 @@ export function resolveConfig(command: Command): RuntimeConfig {
   if (!saved) {
     throw new ConfigError([
       `Missing API key for ${options.apiUrl}. Run "excalidraw login", pass --api-key <key>, or set EXCALIDRAW_API_KEY.`,
+      `Only Excalidraw+ commands need a key: "excalidraw render" and "excalidraw mermaid" work without one.`,
     ]);
   }
 

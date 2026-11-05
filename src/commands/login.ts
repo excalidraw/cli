@@ -1,9 +1,11 @@
 import chalk from "chalk";
 import { Command } from "commander";
 import { ApiError, createClient } from "../client.js";
-import { parseGlobalOptions } from "../config.js";
-import { credentialsPath, removeCredential, saveCredential } from "../credentials.js";
+import { DEFAULT_API_URL, parseGlobalOptions } from "../config.js";
+import { credentialsPath, readCredential, removeCredential, saveCredential } from "../credentials.js";
 import { stripControlCharacters } from "../io.js";
+import { packageJson } from "../package.js";
+import { brandBadge } from "../theme.js";
 import { fetchWorkspaceSummary } from "./whoami.js";
 
 import type { GlobalOptions } from "../config.js";
@@ -13,9 +15,9 @@ const API_KEY_DOCS_URL = "https://plus.excalidraw.com/docs/api/authentication";
 export function registerLoginCommands(program: Command) {
   program
     .command("login")
-    .summary("Sign in and save an API key for later commands")
+    .summary("Log in to Excalidraw+ and save an API key for later commands")
     .description(
-      "Pick a sign-in method, check the API key against the API, and save it for the API origin. Later commands use the saved key unless --api-key or EXCALIDRAW_API_KEY is set.",
+      "Pick a login method, check the API key against the API, and save it for the API origin. Later commands use the saved key unless --api-key or EXCALIDRAW_API_KEY is set. render and mermaid don't need a login.",
     )
     .addHelpText(
       "after",
@@ -26,7 +28,8 @@ EXAMPLES
   $ excalidraw login --api-url https://staging.example.com
 
 NOTES
-  Need a key? See ${API_KEY_DOCS_URL}
+  Need a key? Create one in Excalidraw+ under Account settings → MCP/API key (personal) or Workspace settings → MCP/API Keys. See ${API_KEY_DOCS_URL}
+  Logging in with the browser (OAuth) is coming soon.
   --api-key skips the prompts, e.g. in scripts.
   Keys are saved in ${credentialsPath()}, one per --api-url.
 `,
@@ -90,22 +93,51 @@ async function logInInteractively(options: GlobalOptions) {
   // Prompts go to stderr, which every command keeps for messages to people.
   const output = process.stderr;
   const cancelled = () => new Error("Login cancelled. Nothing was saved.");
+  // The default API is Excalidraw+ itself; other origins are named, so a staging key isn't mistaken for production.
+  const target = options.apiUrl === DEFAULT_API_URL ? "Excalidraw+" : options.apiUrl;
 
-  prompts.intro(`Log in to ${options.apiUrl}`, { output });
+  prompts.intro(`${brandBadge("✎ Excalidraw CLI")} ${chalk.dim(`v${packageJson.version}`)}`, { output });
+  prompts.note(
+    [
+      `${chalk.bold("render")} and ${chalk.bold("mermaid")} run on this computer, free:`,
+      chalk.cyan("  excalidraw render drawing.excalidraw --out drawing.png"),
+      chalk.cyan("  excalidraw mermaid flow.mmd --out flow.svg"),
+      "",
+      "Logging in connects an Excalidraw+ workspace: scenes,",
+      "collections, sharing, members and audit logs.",
+    ].join("\n"),
+    "No account needed to draw",
+    { output },
+  );
+  if (savedCredential(options.apiUrl)) {
+    prompts.log.info(`A key is already saved for ${options.apiUrl}. Logging in again replaces it.`, { output });
+  }
 
   const method = await prompts.select({
-    message: "Pick which method to sign in with:",
+    message: `How do you want to log in to ${target}?`,
     options: [
-      { value: "api-key", label: "API key" },
-      { value: "oauth", label: "OAuth", hint: "coming soon!", disabled: true },
+      { value: "api-key", label: "Paste an API key", hint: "from your Excalidraw+ settings" },
+      { value: "oauth", label: "Log in with the browser", hint: "coming soon", disabled: true },
+      { value: "skip", label: "Not now", hint: "keep using render and mermaid without an account" },
     ],
     output,
   });
   if (prompts.isCancel(method)) {
     throw cancelled();
   }
+  if (method === "skip") {
+    prompts.outro(`Nothing saved. Run ${chalk.cyan("excalidraw login")} whenever you want your workspace.`, { output });
+    return;
+  }
 
-  prompts.log.message(`Need an API key? See ${API_KEY_DOCS_URL}`, { output });
+  prompts.log.message(
+    [
+      "Create a key in Excalidraw+ under Account settings → MCP/API key, or",
+      "Workspace settings → MCP/API Keys for a workspace key.",
+      chalk.dim(`Help: ${API_KEY_DOCS_URL}`),
+    ].join("\n"),
+    { output },
+  );
   const apiKey = await prompts.password({
     message: "Paste your API key:",
     validate: (value) => (value?.trim() ? undefined : "Paste an API key, or press Ctrl+C to cancel."),
@@ -119,15 +151,35 @@ async function logInInteractively(options: GlobalOptions) {
   spinner.start("Checking the key");
 
   try {
-    const { workspace, warning } = await logIn(options, apiKey.trim());
+    const { workspace, warning, keyType } = await logIn(options, apiKey.trim());
     spinner.stop("Key accepted");
     if (warning) {
       prompts.log.warn(warning, { output });
     }
+    prompts.note(
+      [
+        `${chalk.dim("Workspace")}  ${workspace ? stripControlCharacters(workspace.name) : "unknown"}`,
+        `${chalk.dim("Key")}        ${keyType === "personal" ? "personal, acts as you" : "workspace"}`,
+        `${chalk.dim("Saved to")}   ${credentialsPath()}`,
+        "",
+        `Try ${chalk.cyan("excalidraw scenes list --output table")}`,
+      ].join("\n"),
+      "You're all set",
+      { output },
+    );
     prompts.outro(loggedInMessage(workspace), { output });
   } catch (error) {
     spinner.error("Login failed");
     throw error;
+  }
+}
+
+/** Whether a key is saved for the origin. A damaged file counts as none: logging in replaces it. */
+function savedCredential(apiUrl: string) {
+  try {
+    return readCredential(apiUrl) !== undefined;
+  } catch {
+    return false;
   }
 }
 
@@ -156,7 +208,7 @@ async function logIn(options: GlobalOptions, apiKey: string) {
 
   await saveCredential(options.apiUrl, { type: "api-key", apiKey });
 
-  return { workspace, warning };
+  return { workspace, warning, keyType: client.keyType };
 }
 
 function loggedInMessage(workspace: { name: string } | null) {

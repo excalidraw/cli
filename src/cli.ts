@@ -16,9 +16,10 @@ export function createProgram() {
 
   program
     .name("excalidraw")
-    .description("Manage Excalidraw workspace resources, render scenes, and convert Mermaid diagrams locally.")
+    .description(
+      "Excalidraw from your terminal. Render scenes and convert Mermaid diagrams on your computer, free and without an account. With an Excalidraw+ API key, manage your workspace's scenes, collections and members.",
+    )
     .version(packageJson.version, "-v, --version", "print the CLI version")
-    .commandsGroup("CORE COMMANDS")
     .optionsGroup("GLOBAL FLAGS")
     .addOption(
       new Option("--api-url <url>", "API origin; default https://api.excalidraw.com").env(
@@ -59,20 +60,22 @@ export function createProgram() {
       "after",
       `
 EXAMPLES
+  No account needed:
+  $ excalidraw render drawing.excalidraw --out drawing.png
+  $ excalidraw render deck.excalidraw --all-frames --out slides/
+  $ excalidraw mermaid flow.mmd --out flow.svg
+
+  With Excalidraw+:
   $ excalidraw login
   $ excalidraw whoami
-  $ excalidraw scenes list --limit 25
   $ excalidraw scenes list --all --output table
-  $ excalidraw scenes get <sceneId>
   $ excalidraw scenes content get <sceneId> --out scene.json
   $ excalidraw scenes render <sceneId> --out scene.png
-  $ excalidraw render drawing.excalidraw --out drawing.png
-  $ excalidraw mermaid flow.mmd --out flow.svg
   $ excalidraw logs list --operation update --limit 10
 
 SETUP
-  Run "excalidraw login" once to save an API key. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead; both take precedence over the saved key.
-  Local "render" and "mermaid" commands do not require an API key.
+  render and mermaid work right away: they only need Chrome, Chromium, Edge or Firefox installed.
+  For Excalidraw+ commands, run "excalidraw login" once to save an API key. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead; both take precedence over the saved key.
   Use --api-url for development, staging, or self-hosted API origins. Pass the origin only; /api/v1 is added automatically. Saved keys are per origin.
   Run "excalidraw whoami" to confirm which workspace, key type and credential source the CLI is using.
 
@@ -105,15 +108,20 @@ LEARN MORE
     styleArgumentTerm: helpTheme.argument,
   });
 
+  program.commandsGroup("NO ACCOUNT NEEDED");
+  registerRenderCommand(program);
+  registerMermaidCommand(program);
+  registerUpdateCommand(program);
+  // Created now so it joins this group instead of a group of its own.
+  program.helpCommand(true);
+
+  program.commandsGroup("EXCALIDRAW+ (needs an API key, see login)");
   registerLoginCommands(program);
   registerWhoamiCommand(program);
   registerScenesCommands(program);
-  registerRenderCommand(program);
-  registerMermaidCommand(program);
   registerCollectionsCommands(program);
   registerWorkspaceCommands(program);
   registerLogsCommands(program);
-  registerUpdateCommand(program);
 
   return program;
 }

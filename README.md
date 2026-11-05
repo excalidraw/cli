@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@excalidraw/cli)](https://www.npmjs.com/package/@excalidraw/cli)
 [![license](https://img.shields.io/npm/l/@excalidraw/cli)](LICENSE)
 
-Manage your [Excalidraw+](https://plus.excalidraw.com) workspace from the terminal, render any `.excalidraw` file to PNG or SVG, and turn Mermaid diagrams into Excalidraw scenes. Rendering and Mermaid conversion run locally and need no account.
+Render any `.excalidraw` file to PNG or SVG and turn Mermaid diagrams into Excalidraw scenes, free and without an account. With an [Excalidraw+](https://plus.excalidraw.com) API key, manage your workspace from the terminal too.
 
 ```console
 $ excalidraw scenes list --limit 3 -o table
@@ -29,7 +29,23 @@ Commands you run in a terminal check for a newer version at most once a day, whi
 
 ## Quick start
 
-Workspace commands need an Excalidraw+ API key. The [authentication docs](https://plus.excalidraw.com/docs/api/authentication) explain how to create one.
+### No account needed
+
+`render` and `mermaid` run on your computer with an installed Chrome, Chromium, Edge or Firefox. Nothing is uploaded.
+
+```bash
+# Render a drawing, or each slide of a deck
+excalidraw render drawing.excalidraw --out drawing.png
+excalidraw render deck.excalidraw --all-frames --out slides/
+
+# Turn a Mermaid diagram into an editable Excalidraw scene, or straight into an SVG
+excalidraw mermaid flow.mmd --out flow.excalidraw
+excalidraw mermaid flow.mmd --out flow.svg
+```
+
+### With Excalidraw+
+
+Workspace commands need an Excalidraw+ API key. Create one in Excalidraw+ under **Account settings → MCP/API key** (a personal key) or **Workspace settings → MCP/API Keys**; the [authentication docs](https://plus.excalidraw.com/docs/api/authentication) explain both. Logging in with the browser (OAuth) is coming soon.
 
 ```bash
 # Paste your API key once; later commands use it
@@ -136,6 +152,16 @@ excalidraw scenes create --name "Flow" --collection-id <collectionId> --file flo
 
 ## Commands
 
+No account needed:
+
+| Command | What it does |
+| --- | --- |
+| `render` | Render a local file to PNG or SVG |
+| `mermaid` | Convert a Mermaid diagram into an Excalidraw scene, PNG or SVG |
+| `update` | Update the CLI to the latest version |
+
+With an Excalidraw+ API key:
+
 | Command | What it does |
 | --- | --- |
 | `login` | Check an API key and save it for later commands |
@@ -146,14 +172,11 @@ excalidraw scenes create --name "Flow" --collection-id <collectionId> --file flo
 | `scenes share-slides` | Share a scene's frames as a presentation link |
 | `scenes content` | Read, replace or patch a scene's drawing |
 | `scenes render` | Render a workspace scene to PNG or SVG |
-| `render` | Render a local file to PNG or SVG |
-| `mermaid` | Convert a Mermaid diagram into an Excalidraw scene, PNG or SVG |
 | `collections` | Manage collections and the scenes in them |
 | `workspace` | Read or update the workspace name and picture |
 | `workspace users` | List, update or remove members |
 | `workspace invites` | Manage email invites and invite links |
 | `logs` | Query the workspace audit log |
-| `update` | Update the CLI to the latest version |
 
 Updating the workspace, and the `users`, `invites` and `logs` commands, need admin rights. A personal key that belongs to a member gets `HTTP 403`.
 
@@ -207,7 +230,7 @@ Requests go through the proxy `HTTPS_PROXY` or `HTTP_PROXY` names, except to hos
 
 There are two kinds of API key. Workspace keys act for the whole workspace. They can't see private scenes, so `scenes create` needs a real collection ID. Personal keys start with `uk-` and act as one user, with that user's role. They can pass `private` as the collection ID to use the owner's private collection. Run `excalidraw whoami` to see which kind you're using.
 
-`excalidraw login` asks how to sign in (an API key for now; OAuth is coming), checks the key against the API and saves it. A key the API rejects isn't saved. Commands use the saved key when neither `--api-key` nor `EXCALIDRAW_API_KEY` is set; `whoami` reports which one is in use as `credentialSource` (`flag`, `env` or `login`).
+`excalidraw login` asks how to log in (an API key for now; logging in with the browser through OAuth is coming soon), checks the key against the API and saves it. Choosing "Not now" leaves everything as it was. A key the API rejects isn't saved. Commands use the saved key when neither `--api-key` nor `EXCALIDRAW_API_KEY` is set; `whoami` reports which one is in use as `credentialSource` (`flag`, `env` or `login`).
 
 Keys are saved per API origin, so a staging key is only sent to staging: `excalidraw login --api-url https://staging.example.com` saves one next to your production key. They live in `~/.config/excalidraw-cli/credentials.json` (`$XDG_CONFIG_HOME` if set, `%APPDATA%` on Windows), readable only by you. `excalidraw logout` removes the key for the origin; to revoke the key itself, delete it in Excalidraw+.
 
