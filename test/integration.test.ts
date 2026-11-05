@@ -70,6 +70,10 @@ test("help output exposes the command tree", async () => {
     for (const expected of item.expected) {
       assert.match(stdout, new RegExp(escapeRegExp(expected)));
     }
+    // The top-level command groups don't leak into subcommands' help.
+    if (item.args.length > 1) {
+      assert.doesNotMatch(stdout, /NO ACCOUNT NEEDED|EXCALIDRAW\+ \(/, item.args.join(" "));
+    }
   }
 });
 

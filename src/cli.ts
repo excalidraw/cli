@@ -112,8 +112,6 @@ LEARN MORE
   registerRenderCommand(program);
   registerMermaidCommand(program);
   registerUpdateCommand(program);
-  // Created now so it joins this group instead of a group of its own.
-  program.helpCommand(true);
 
   program.commandsGroup("EXCALIDRAW+ (needs an API key, see login)");
   registerLoginCommands(program);
@@ -122,6 +120,11 @@ LEARN MORE
   registerCollectionsCommands(program);
   registerWorkspaceCommands(program);
   registerLogsCommands(program);
+
+  // Created last, so subcommands don't share it, and in a group so it isn't listed on its own.
+  // Subcommands created after it would list their help command under this group too.
+  program.commandsGroup("NO ACCOUNT NEEDED");
+  program.helpCommand(true);
 
   return program;
 }
