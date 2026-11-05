@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import chalk from "chalk";
 import { Command } from "commander";
 import { ApiError, createClient } from "../client.js";
@@ -96,29 +97,17 @@ async function logInInteractively(options: GlobalOptions) {
   // The default API is Excalidraw+ itself; other origins are named, so a staging key isn't mistaken for production.
   const target = options.apiUrl === DEFAULT_API_URL ? "Excalidraw+" : options.apiUrl;
 
-  prompts.intro(`${brandBadge("✎ Excalidraw CLI")} ${chalk.dim(`v${packageJson.version}`)}`, { output });
-  prompts.note(
-    [
-      `${chalk.bold("render")} and ${chalk.bold("mermaid")} run on this computer, free:`,
-      chalk.cyan("  excalidraw render drawing.excalidraw --out drawing.png"),
-      chalk.cyan("  excalidraw mermaid flow.mmd --out flow.svg"),
-      "",
-      "Logging in connects an Excalidraw+ workspace: scenes,",
-      "collections, sharing, members and audit logs.",
-    ].join("\n"),
-    "No account needed to draw",
-    { output },
-  );
-  if (savedCredential(options.apiUrl)) {
-    prompts.log.info(`A key is already saved for ${options.apiUrl}. Logging in again replaces it.`, { output });
-  }
+  output.write(banner());
+  const saved = savedCredential(options.apiUrl)
+    ? `\n${chalk.dim("You're already logged in; a new key replaces the saved one.")}`
+    : "";
 
   const method = await prompts.select({
-    message: `How do you want to log in to ${target}?`,
+    message: `Log in to ${target}?${saved}`,
     options: [
-      { value: "api-key", label: "Paste an API key", hint: "from your Excalidraw+ settings" },
+      { value: "api-key", label: "Paste an API key" },
       { value: "oauth", label: "Log in with the browser", hint: "coming soon", disabled: true },
-      { value: "skip", label: "Not now", hint: "keep using render and mermaid without an account" },
+      { value: "skip", label: "Not now, keep using the free CLI (no account needed)" },
     ],
     output,
   });
@@ -126,15 +115,18 @@ async function logInInteractively(options: GlobalOptions) {
     throw cancelled();
   }
   if (method === "skip") {
-    prompts.outro(`Nothing saved. Run ${chalk.cyan("excalidraw login")} whenever you want your workspace.`, { output });
+    prompts.outro(
+      ["No problem, nothing saved.", `   ${chalk.dim("Try")} ${chalk.cyan("excalidraw render drawing.excalidraw --out drawing.png")}`].join("\n"),
+      { output },
+    );
     return;
   }
 
   prompts.log.message(
     [
-      "Create a key in Excalidraw+ under Account settings → MCP/API key, or",
-      "Workspace settings → MCP/API Keys for a workspace key.",
-      chalk.dim(`Help: ${API_KEY_DOCS_URL}`),
+      "Create one in Excalidraw+ under Account settings → MCP/API key,",
+      "or Workspace settings → MCP/API Keys for a workspace key.",
+      chalk.dim(API_KEY_DOCS_URL),
     ].join("\n"),
     { output },
   );
@@ -156,22 +148,43 @@ async function logInInteractively(options: GlobalOptions) {
     if (warning) {
       prompts.log.warn(warning, { output });
     }
-    prompts.note(
+    prompts.outro(
       [
-        `${chalk.dim("Workspace")}  ${workspace ? stripControlCharacters(workspace.name) : "unknown"}`,
-        `${chalk.dim("Key")}        ${keyType === "personal" ? "personal, acts as you" : "workspace"}`,
-        `${chalk.dim("Saved to")}   ${credentialsPath()}`,
-        "",
-        `Try ${chalk.cyan("excalidraw scenes list --output table")}`,
+        `${chalk.green(loggedInMessage(workspace))} ${chalk.dim(`(${keyType === "personal" ? "personal" : "workspace"} key)`)}`,
+        `   ${chalk.dim("Try")} ${chalk.cyan("excalidraw scenes list --output table")}`,
       ].join("\n"),
-      "You're all set",
       { output },
     );
-    prompts.outro(loggedInMessage(workspace), { output });
   } catch (error) {
     spinner.error("Login failed");
     throw error;
   }
+}
+
+/** What works without an account, next to what logging in adds. */
+const FEATURES = [
+  [".excalidraw → PNG or SVG", "scenes and collections"],
+  ["each frame → its own image", "public links and presentations"],
+  ["Mermaid → editable diagram", "render and edit workspace scenes"],
+  ["dark, transparent, 16× scale", "members, invites, audit logs"],
+];
+
+/** The CLI's name, then what works without an account next to what logging in adds. */
+function banner() {
+  const column = 33;
+  const plus = chalk.hex("#a5a3f5");
+  const pad = (text: string) => text + " ".repeat(Math.max(column - stripVTControlCharacters(text).length, 1));
+  const free = (text: string) => text.replace("→", chalk.dim("→"));
+  return [
+    "",
+    `  ${brandBadge("✎ Excalidraw CLI")} ${chalk.dim(`v${packageJson.version} · excalidraw.com`)}`,
+    "",
+    `  ${pad(chalk.green.bold("Free, no account"))}${plus.bold("With Excalidraw+")}`,
+    ...FEATURES.map(([left, right]) => `  ${pad(`${chalk.green("✓")} ${free(left)}`)}${plus("✓")} ${right}`),
+    "",
+    `  ${plus("✦")} ${chalk.bold("Great with AI agents:")} ${chalk.dim("JSON output, stdin and stdout, EXCALIDRAW_API_KEY")}`,
+    "",
+  ].join("\n");
 }
 
 /** Whether a key is saved for the origin. A damaged file counts as none: logging in replaces it. */
