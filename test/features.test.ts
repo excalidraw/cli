@@ -1027,6 +1027,33 @@ test("API requests go through HTTP_PROXY, as curl's do, unless NO_PROXY lists th
   }
 });
 
+test("a proxy without a scheme is an HTTP proxy, as in curl, and one the CLI can't use is skipped with a warning", async () => {
+  const proxy = await startProxy();
+  try {
+    await withApi(async ({ origin, calls }) => {
+      const get = (env: NodeJS.ProcessEnv) => runCli(["scenes", "content", "get", "scene_1"], { origin, env });
+
+      await get({ HTTP_PROXY: proxy.url.replace("http://", "") });
+      assert.ok(proxy.requests.length > 0, "the request went through the proxy");
+
+      // Node's own proxy support is off with NODE_USE_ENV_PROXY=0; the CLI's isn't.
+      const proxied = proxy.requests.length;
+      await get({ HTTP_PROXY: proxy.url, NODE_USE_ENV_PROXY: "0" });
+      assert.ok(proxy.requests.length > proxied);
+
+      // The password in the value isn't printed.
+      const { stderr } = await get({ HTTP_PROXY: "socks4://user:secret@127.0.0.1:9" });
+      assert.equal(
+        stderr,
+        "Ignoring HTTP_PROXY: it is a socks4 proxy. Use an http://, https:// or socks5:// proxy URL. Connecting directly instead.\n",
+      );
+      assert.equal(calls.length, 3, "every request reached the API");
+    });
+  } finally {
+    await proxy.close();
+  }
+});
+
 test("API requests identify the CLI and its version in the User-Agent, also through a proxy", async () => {
   const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   // The pattern the API counts as CLI usage (excalidraw-plus apps/public-api/src/lib/requestUsage.ts).
