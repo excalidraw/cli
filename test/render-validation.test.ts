@@ -41,7 +41,23 @@ test("render rejects invalid scenes and options without changing the output file
     {
       scene: fixture,
       args: ["--fonts-url", "https://mirror.example/, ftp://mirror.example/"],
-      error: /^--fonts-url: expected http\(s\) URLs or folders separated by commas, or none/m,
+      error: /^--fonts-url: ftp:\/\/mirror\.example\/ is not an http\(s\) or file: URL/m,
+    },
+    // Typos that would otherwise turn into folders.
+    {
+      scene: fixture,
+      args: ["--fonts-url", "https://mirror.example/,"],
+      error: /^--fonts-url: expected http\(s\) URLs or folders separated by commas, but one entry is empty/m,
+    },
+    {
+      scene: fixture,
+      args: ["--fonts-url", "none,https://mirror.example/"],
+      error: /^--fonts-url: none turns font downloads off, so it can't be combined with mirrors/m,
+    },
+    {
+      scene: fixture,
+      args: ["--fonts-url", "cdn.example.com/fonts"],
+      error: /^--fonts-url: cdn\.example\.com\/fonts is not a folder; mirror URLs start with https:\/\//m,
     },
     {
       scene: fixture,

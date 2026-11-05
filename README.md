@@ -101,7 +101,7 @@ Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or 
 
 ### CJK fonts
 
-The CLI downloads Xiaolai's files from Excalidraw's CDN, then [npmmirror](https://npmmirror.com), then jsDelivr, whichever answers first, and checks each file against its SHA-256. If a download fails, the command still renders and prints a warning naming the reason.
+The CLI downloads Xiaolai's files from Excalidraw's CDN and checks each against its SHA-256. When the CDN fails or doesn't answer in time, it tries [npmmirror](https://npmmirror.com), then jsDelivr. If every download fails, the command still renders and prints a warning naming the reason.
 
 - Behind a proxy, set `HTTPS_PROXY` (or `HTTP_PROXY`) as you would for curl; a value without a scheme, such as `proxy.corp:8080`, is an HTTP proxy. `NO_PROXY` lists hosts to reach directly. This applies to API requests and the update check too. `socks5://` URLs work as well, though Node prints a warning that its SOCKS support is experimental. Other proxies, such as `socks4://`, are skipped with a warning.
 - `--fonts-url` (or `EXCALIDRAW_FONTS_URL`) replaces the download locations with your own: comma-separated URLs that mirror `@excalidraw/excalidraw@0.18.1`'s `dist/prod/` folder, or `none` to turn downloads off.

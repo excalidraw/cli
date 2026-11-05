@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod/v4";
@@ -97,25 +98,46 @@ const ImageOptionsSchema = z.object({
     (value) => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined),
     z
       .string()
-      .transform((value) =>
-        value === "none"
-          ? []
-          : value.split(",").map((entry) => {
-              const mirror = entry.trim();
-              // A scheme, but not a Windows drive letter such as C:\fonts.
-              const url = /^[a-z][a-z0-9+.-]+:/i.test(mirror) ? mirror : pathToFileURL(resolve(mirror)).href;
-              return url.replace(/\/?$/, "/");
-            }),
-      )
-      .refine(
-        (urls) => urls.every((url) => URL.canParse(url) && /^(https?|file):$/.test(new URL(url).protocol)),
-        "expected http(s) URLs or folders separated by commas, or none",
-      )
+      .transform((value, context) => {
+        if (value.toLowerCase() === "none") {
+          return [];
+        }
+        const urls: string[] = [];
+        for (const entry of value.split(",").map((part) => part.trim())) {
+          const problem = mirrorProblem(entry);
+          if (problem) {
+            context.issues.push({ code: "custom", message: problem, input: value });
+            return z.NEVER;
+          }
+          // A scheme, but not a Windows drive letter such as C:\fonts.
+          const url = /^[a-z][a-z0-9+.-]+:/i.test(entry) ? entry : pathToFileURL(resolve(entry)).href;
+          urls.push(url.replace(/\/?$/, "/"));
+        }
+        return urls;
+      })
       .optional(),
   ),
 });
 
 export type ImageOptions = z.infer<typeof ImageOptionsSchema>;
+
+/** Why an entry of --fonts-url can't be a mirror, if it can't. Catches typos that would silently become folders. */
+function mirrorProblem(entry: string) {
+  if (entry === "") {
+    return "expected http(s) URLs or folders separated by commas, but one entry is empty";
+  }
+  if (entry.toLowerCase() === "none") {
+    return "none turns font downloads off, so it can't be combined with mirrors";
+  }
+  if (/^[a-z][a-z0-9+.-]+:/i.test(entry)) {
+    return URL.canParse(entry) && /^(https?|file):$/.test(new URL(entry).protocol)
+      ? undefined
+      : `${entry} is not an http(s) or file: URL`;
+  }
+  return statSync(resolve(entry), { throwIfNoEntry: false })?.isDirectory()
+    ? undefined
+    : `${entry} is not a folder; mirror URLs start with https://`;
+}
 
 export const RenderOptionsSchema = ImageOptionsSchema.extend({
   format: ImageFormatSchema.optional(),

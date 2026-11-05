@@ -355,13 +355,15 @@ test("--fonts-url takes a local copy of the fonts, as a folder or a file: URL, w
     assert.equal(existsSync(join(cache, "excalidraw-cli/fonts")), false, "a local copy isn't cached");
   }
 
-  const missing = await runPngCli(["render", "-", "--out", "-", "--fonts-url", "missing"], scene, {
+  // A folder without the fonts, such as another package's dist/.
+  await mkdir(join(directory, "empty"));
+  const missing = await runPngCli(["render", "-", "--out", "-", "--fonts-url", "empty"], scene, {
     cwd: directory,
     env: { XDG_CACHE_HOME: join(directory, "missing-cache") },
   });
   assert.match(
     missing.stderr.toString(),
-    new RegExp(`Could not download \\d+ font files? for this scene's text \\(${escapeRegExp(join(directory, "missing"))}/fonts/Xiaolai/[^:]+: ENOENT.*local copy of @excalidraw/excalidraw's dist/prod folder`),
+    new RegExp(`Could not download \\d+ font files? for this scene's text \\(${escapeRegExp(join(directory, "empty"))}/fonts/Xiaolai/[^:]+: ENOENT.*local copy of @excalidraw/excalidraw's dist/prod folder`),
   );
 });
 
@@ -612,6 +614,53 @@ test("SVG output follows the --out extension or --format, and embeds the fonts i
 
   const piped = await runCli(["render", input, "--out", "-", "--format", "svg", "--frame-id", "frame", "--scale", "2"]);
   assert.equal(piped.stdout, svg, "stdout matches file output");
+});
+
+test("SVGs are valid XML, and a frame's SVG clips its children without embedding the whole scene", async () => {
+  const fixture = renderFixture();
+  const rect = fixture.elements.find((element) => element.id === "rect")!;
+  const text = fixture.elements.find((element) => element.id === "text")!;
+  const scene = {
+    ...fixture,
+    elements: [
+      ...fixture.elements.filter((element) => element.id !== "text"),
+      // Sticks out of the frame on the right.
+      { ...rect, id: "overflow", x: 150, width: 200 },
+      // Excalidraw keeps non-breaking spaces, which HTML serializes as &nbsp;, an entity XML lacks.
+      { ...text, text: "A B", originalText: "A B" },
+    ],
+    appState: { ...fixture.appState, exportEmbedScene: true },
+  };
+  const xmlEntities = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/i;
+
+  const whole = (await runCli(["render", "-", "--out", "-", "--format", "svg"], scene)).stdout;
+  assert.doesNotMatch(whole, xmlEntities);
+  assert.match(whole, /A B/);
+  assert.match(whole, /<!-- payload-start -->/, "the scene asked to embed itself");
+
+  const frame = (await runCli(["render", "-", "--out", "-", "--format", "svg", "--frame-id", "frame"], scene)).stdout;
+  assert.doesNotMatch(frame, xmlEntities);
+  assert.match(frame, /<clipPath id="frame"><rect [^>]*width="200" height="100"/);
+  assert.match(frame, /clip-path="url\(#frame\)"/);
+  assert.doesNotMatch(frame, /payload-start/, "a frame's SVG doesn't carry the whole scene");
+  // exportingFrame still keeps the frame's outline and name out.
+  assert.doesNotMatch(frame, />Example</);
+});
+
+test("a renderer file missing from the install fails the render right away", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-install-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  // An install without the SVG export's WebAssembly.
+  const cli = await copyPackage(directory);
+  await rm(join(directory, "dist/wasm/0.txt"));
+
+  const started = Date.now();
+  await assert.rejects(runCli(["render", "-", "--out", "-", "--format", "svg"], renderFixture(), { cli }), (error: unknown) => {
+    assertExecError(error);
+    assert.match(error.stderr, /Could not read .*0\.txt \(ENOENT\)\. Reinstall the CLI to restore it\./);
+    return true;
+  });
+  assert.ok(Date.now() - started < 20_000, "fails before the 30 s deadline");
 });
 
 test("--all-frames renders each frame in presentation order into the --out directory", async (t) => {

@@ -60,9 +60,10 @@ export function createFontLoader({ mirrors, deadline }: { mirrors?: string[]; de
         break;
       }
       try {
-        // Later mirrors get their share of the remaining time if an earlier one hangs.
+        // A mirror gets half the remaining time, the last one all of it: the first, Excalidraw's
+        // CDN by default, gets as long as the others together, and a hanging one leaves them time.
         // AbortSignal.timeout() only accepts whole milliseconds.
-        const timeout = Math.ceil(remaining / (urls.length - index));
+        const timeout = Math.ceil(index === urls.length - 1 ? remaining : remaining / 2);
         const response = await httpFetch(url, { signal: AbortSignal.timeout(timeout) });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);

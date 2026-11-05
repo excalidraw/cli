@@ -23,7 +23,7 @@ const STDOUT_NOTES = `  With --out -, stdout contains only the PNG bytes or SVG 
 const FORMAT_NOTES = `  The format follows the --out extension, .png or .svg, unless --format is set. Other extensions get PNG.
   SVGs embed the fonts their text uses, so they look the same everywhere. --max-width and --max-height only apply to PNG.`;
 
-const FRAMES_NOTES = `  --all-frames writes each frame to the --out directory, numbered in presentation order, such as 01-intro.png, and prints them as JSON.`;
+const FRAMES_NOTES = `  --all-frames writes each frame to the --out directory, numbered in presentation order, such as 01-intro.png, and prints them as JSON. --timeout applies to each frame.`;
 
 const FONT_NOTES = `  Excalidraw's fonts ship with the CLI, except Xiaolai, the hand-drawn CJK font that Excalifont and Virgil text falls back to. The files a scene's text needs are downloaded on first use from Excalidraw's CDN, npmmirror or jsDelivr, checked, and cached; without network access that text uses a system font.
   Downloads go through the proxy HTTPS_PROXY or HTTP_PROXY names. --fonts-url sets other mirrors, or a local copy of @excalidraw/excalidraw's dist/prod folder, such as node_modules/@excalidraw/excalidraw/dist/prod.`;
@@ -126,16 +126,18 @@ async function renderToOutput(
   summary: Record<string, unknown> = {},
 ) {
   const { renderScene } = await import("../render.js");
-  const { images, warning } = await renderScene(scene, options);
-  warn(warning);
   const mimeType = MIME_TYPES[options.format];
 
   if (options.allFrames) {
     const directory = resolve(options.out);
-    await mkdir(directory, { recursive: true });
-    const frames = [];
-    for (const [index, image] of images.entries()) {
-      const path = join(directory, frameFileName(image, index, images.length, options.format));
+    // Each frame is written as soon as it's drawn, so a large deck never sits in memory. The
+    // directory is made then too, after the scene and its frames passed validation.
+    const frames: Record<string, unknown>[] = [];
+    const { warning } = await renderScene(scene, options, async (image, index, count) => {
+      if (index === 0) {
+        await mkdir(directory, { recursive: true });
+      }
+      const path = join(directory, frameFileName(image, index, count, options.format));
       await writeOutputFile(path, image.data);
       frames.push({
         frameId: image.frame?.id ?? null,
@@ -144,20 +146,26 @@ async function renderToOutput(
         width: image.width,
         height: image.height,
       });
-    }
+    });
+    warn(warning);
     emitOutput(command, { ...summary, mimeType, frames });
     return;
   }
 
-  const [image] = images;
-  await writeOutputFile(options.out, image!.data);
+  let rendered: RenderedImage | undefined;
+  const { warning } = await renderScene(scene, options, async (image) => {
+    rendered = image;
+  });
+  warn(warning);
+  const image = rendered!;
+  await writeOutputFile(options.out, image.data);
   if (options.out !== STDIO_PATH) {
     emitOutput(command, {
       ...summary,
       path: resolve(options.out),
       mimeType,
-      width: image!.width,
-      height: image!.height,
+      width: image.width,
+      height: image.height,
       frameId: options.frameId ?? null,
     });
   }
