@@ -19,8 +19,8 @@ importers:
         specifier: 0.18.0-4ce8305
         version: 0.18.0-4ce8305
       '@excalidraw/mermaid-to-excalidraw':
-        specifier: 3.4.0
-        version: 3.4.0
+        specifier: 3.6.0
+        version: 3.6.0
       '@excalidraw/utils':
         specifier: 0.1.5
         version: 0.1.5
@@ -240,8 +240,8 @@ packages:
   '@excalidraw/math@0.18.0-4ce8305':
     resolution: {integrity: sha512-nb7v6nvrDxYFjOCpBgdoyGhu5nOrX34ZKCHbFvGOlZMNUifhNzlZ1OKgvqKxdh0E8aWpdGMcpB+Xx4IDIIONdQ==}
 
-  '@excalidraw/mermaid-to-excalidraw@3.4.0':
-    resolution: {integrity: sha512-u8KQUxOlTd/mzGj8ijfzklHQrxEfObWZrByH01yyRQpKQY7W20ySmTP4Qu4Yp+SMiD+gBY16BgMOlVkQDTDmwg==}
+  '@excalidraw/mermaid-to-excalidraw@3.6.0':
+    resolution: {integrity: sha512-h21Mr9FxmfLDds78iw0iTRDzes+/CDRFJ5kndFAmH+EVQLG6PHoMyn4Lms1dHiYgDTal+MkBJnqKJC9Xj080uA==}
 
   '@excalidraw/utils@0.1.5':
     resolution: {integrity: sha512-WB2bj+Xe/Br0etBasU8KJug458O7fwSsPNYLc19RpL7Pl/g5ZzUkfY1G3+dZO6/z/phHGwVk5uIsXkeUZXHFrA==}
@@ -468,7 +468,7 @@ snapshots:
     dependencies:
       '@excalidraw/common': 0.18.0-4ce8305
 
-  '@excalidraw/mermaid-to-excalidraw@3.4.0':
+  '@excalidraw/mermaid-to-excalidraw@3.6.0':
     dependencies:
       '@excalidraw/markdown-to-text': 0.1.2
       nanoid: 4.0.2

@@ -727,6 +727,36 @@ test("mermaid converts a diagram into editable elements sized to their labels, o
   assert.match(svg.stdout, /^<svg /);
 });
 
+test("mermaid turns Gantt charts and timelines into editable elements, and other types such as pie charts into an image", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-types-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const convert = async (name: string, definition: string) => {
+    const input = join(directory, `${name}.mmd`);
+    const out = join(directory, `${name}.excalidraw`);
+    await writeFile(input, definition);
+    await runCli(["mermaid", input, "--out", out]);
+    const { elements } = JSON.parse(await readFile(out, "utf8")) as { elements: { type: string; text?: string }[] };
+    return { types: new Set(elements.map((element) => element.type)), texts: elements.flatMap((element) => element.text ?? []) };
+  };
+
+  const gantt = await convert(
+    "gantt",
+    "gantt\n  title Launch\n  dateFormat YYYY-MM-DD\n  section Build\n  Design :a1, 2026-01-01, 5d\n  Ship :after a1, 3d\n",
+  );
+  assert.ok(!gantt.types.has("image"));
+  assert.ok(gantt.types.has("rectangle"));
+  for (const text of ["Launch", "Build", "Design", "Ship"]) {
+    assert.ok(gantt.texts.includes(text), `the Gantt chart has the text "${text}"`);
+  }
+
+  const timeline = await convert("timeline", "timeline\n  title Releases\n  2025 : CLI 0.1\n  2026 : CLI 0.3\n");
+  assert.ok(!timeline.types.has("image"));
+  assert.deepEqual(timeline.texts.sort(), ["2025", "2026", "CLI 0.1", "CLI 0.3", "Releases"]);
+
+  const pie = await convert("pie", 'pie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n');
+  assert.deepEqual([...pie.types], ["image"]);
+});
+
 test("mermaid reports syntax errors with their position", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-error-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

@@ -272,7 +272,7 @@ EXAMPLES
   $ excalidraw mermaid flow.mmd --out flow.excalidraw && excalidraw scenes create --name "Flow" --collection-id <collectionId> --file flow.excalidraw
 
 NOTES
-  Flowcharts (including swimlane-beta), sequence, class, ER and state diagrams become editable shapes and arrows. Other diagram types Mermaid supports, such as gantt and pie, become one image.
+  Flowcharts (including swimlane-beta), sequence, class, ER and state diagrams, Gantt charts, quadrant charts and timelines become editable shapes and arrows. Other diagram types Mermaid supports, such as pie charts, become one image.
   Diagrams are parsed and laid out by Pele (https://pele.run), the engine behind Excalidraw's Mermaid import.
   The format follows the --out extension (.excalidraw, .json, .png, .svg) unless --format is set. Other extensions get an Excalidraw scene.
   A syntax error fails the command with the line and column to fix.

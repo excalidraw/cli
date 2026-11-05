@@ -145,7 +145,7 @@ excalidraw scenes create --name "Flow" --collection-id <collectionId> --file flo
 ```
 
 - The format follows the `--out` extension (`.excalidraw`, `.json`, `.png`, `.svg`) or `--format`.
-- Flowcharts (including `swimlane-beta`), sequence, class, ER and state diagrams become editable elements. Other types, such as gantt and pie, become one image.
+- Flowcharts (including `swimlane-beta`), sequence, class, ER and state diagrams, Gantt charts, quadrant charts and timelines become editable elements. Other types, such as pie charts, become one image.
 - `--elbow` draws flowchart edges and state transitions as elbow arrows. `--font-size` sets the text size (default 20).
 - The `render` image options, such as `--scale` and `--theme`, apply to PNG and SVG output.
 - A syntax error fails the command with the line to fix.
