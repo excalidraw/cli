@@ -6,7 +6,3 @@ minimumReleaseAge: 1440
 # the build uses its JS API, which loads the platform package directly.
 allowBuilds:
   esbuild: false
-
-# Our own release, published within the day above; exempt this exact version only.
-minimumReleaseAgeExclude:
-  - "@excalidraw/mermaid-to-excalidraw@3.4.0"
