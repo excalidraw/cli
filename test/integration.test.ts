@@ -22,15 +22,16 @@ test("help output exposes the command tree", async () => {
         "collections",
         "workspace",
         "logs",
-        "formatted JSON",
+        "Commands print JSON",
         "-o, --output <format>",
         "--retries <n>",
         "--request-timeout <ms>",
         "--raw",
         "--api-key <key>",
         "--api-url <url>",
-        "NO ACCOUNT NEEDED",
-        "EXCALIDRAW+ (needs an API key, see login)",
+        "Free, no account",
+        "With Excalidraw+ · needs an API key",
+        "(default json, env EXCALIDRAW_OUTPUT)",
       ],
     },
     {
@@ -43,8 +44,8 @@ test("help output exposes the command tree", async () => {
     { args: ["scenes", "list", "--help"], expected: ["--all", "--collection-id <id>", "--limit <number>"] },
     { args: ["scenes", "create", "--help"], expected: ["--collection-id <id>", "--file <file>", "--pinned"] },
     { args: ["scenes", "update", "--help"], expected: ["--no-pinned"] },
-    { args: ["scenes", "content", "--help"], expected: ["get [options] <sceneId>", "put", "patch"] },
-    { args: ["collections", "scenes", "--help"], expected: ["list [options] <collectionId>", "create"] },
+    { args: ["scenes", "content", "--help"], expected: ["get <sceneId>", "put <sceneId>", "patch <sceneId>"] },
+    { args: ["collections", "scenes", "--help"], expected: ["list <collectionId>", "create <collectionId>"] },
     { args: ["workspace", "users", "--help"], expected: ["list", "get <userId>", "update", "remove"] },
     {
       args: ["workspace", "invites", "--help"],
@@ -72,7 +73,7 @@ test("help output exposes the command tree", async () => {
     }
     // The top-level command groups don't leak into subcommands' help.
     if (item.args.length > 1) {
-      assert.doesNotMatch(stdout, /NO ACCOUNT NEEDED|EXCALIDRAW\+ \(/, item.args.join(" "));
+      assert.doesNotMatch(stdout, /Free, no account|With Excalidraw\+/, item.args.join(" "));
     }
   }
 });

@@ -1,8 +1,9 @@
-import { stripVTControlCharacters } from "node:util";
 import { createProgram } from "./cli.js";
+import { commandPath, helpSections } from "./help.js";
 import { packageJson } from "./package.js";
 
 import type { Argument, Command, Option } from "commander";
+import type { HelpSection } from "./help.js";
 
 /**
  * The command reference that `pnpm run build` writes to dist/reference.json. The docs at
@@ -53,8 +54,6 @@ export type OptionReference = {
   choices?: string[];
 };
 
-/** A block of the help text a command adds after its options, one entry per line. */
-export type HelpSection = { title: string; lines: string[] };
 
 export function createReference(): Reference {
   const program = createProgram();
@@ -64,7 +63,7 @@ export function createReference(): Reference {
     version: packageJson.version,
     description: program.description(),
     globalOptions: visibleOptions(program),
-    ...helpSections(program),
+    ...examplesAndSections(program),
     commands: subcommands(program),
   };
 }
@@ -78,7 +77,7 @@ function subcommands(command: Command): CommandReference[] {
 }
 
 function describeCommand(command: Command): CommandReference {
-  const { examples, sections } = helpSections(command);
+  const { examples, sections } = examplesAndSections(command);
   return {
     path: commandPath(command),
     name: command.name(),
@@ -91,10 +90,6 @@ function describeCommand(command: Command): CommandReference {
     sections,
     commands: subcommands(command),
   };
-}
-
-function commandPath(command: Command): string {
-  return command.parent ? `${commandPath(command.parent)} ${command.name()}` : command.name();
 }
 
 function describeArgument(argument: Argument): ArgumentReference {
@@ -128,29 +123,9 @@ function describeOption(option: Option): OptionReference {
   };
 }
 
-/**
- * Splits the text a command adds after its help (see `addHelpText`) into its sections. Each section
- * is an upper-case title followed by lines indented by two spaces, and example lines start with "$ ".
- * Every line is one example or note: don't wrap them by hand, the terminal does, and the docs list
- * each line as an item.
- */
-function helpSections(command: Command): { examples: string[]; sections: HelpSection[] } {
-  let help = "";
-  command.configureOutput({ writeOut: (text) => (help += text), getOutHasColors: () => false });
-  command.outputHelp();
-  const after = stripVTControlCharacters(help.slice(command.helpInformation().length));
-
-  const sections: HelpSection[] = [];
-  for (const line of after.split("\n")) {
-    if (/^[A-Z][A-Z ]*$/.test(line)) {
-      sections.push({ title: line, lines: [] });
-    } else if (line.startsWith("  ") && sections.length > 0) {
-      sections.at(-1)!.lines.push(line.slice(2).trim());
-    } else if (line.trim() !== "") {
-      throw new Error(`Unexpected help line for "${commandPath(command)}": ${JSON.stringify(line)}`);
-    }
-  }
-
+/** The examples and other sections a command's help adds after its options (see help.ts). */
+function examplesAndSections(command: Command): { examples: string[]; sections: HelpSection[] } {
+  const sections = helpSections(command);
   const examples = sections.find((section) => section.title === "EXAMPLES");
   return {
     examples: (examples?.lines ?? []).map((line) => line.replace(/^\$ /, "")),

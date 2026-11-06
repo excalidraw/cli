@@ -6,7 +6,6 @@ import { ApiError } from "./client.js";
 import { createProgram } from "./cli.js";
 import { ConfigError } from "./config.js";
 import { stripControlCharacters } from "./io.js";
-import { helpTheme } from "./theme.js";
 import { startUpdateCheck } from "./update.js";
 
 // Handles every stdout write failure. It never exits the process, so pending cleanup (like closing
@@ -65,7 +64,7 @@ try {
   } else if (error instanceof ConfigError) {
     console.error(chalk.red.bold("Configuration error:"));
     for (const issue of error.issues) {
-      printError(helpTheme.description, `  - ${issue}`);
+      printError(chalk.dim, `  - ${issue}`);
     }
   } else if (error instanceof Error) {
     printError(chalk.red, error.message);

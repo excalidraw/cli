@@ -7,9 +7,9 @@ import { registerWhoamiCommand } from "./commands/whoami.js";
 import { registerWorkspaceCommands } from "./commands/workspace.js";
 import { registerMermaidCommand, registerRenderCommand } from "./commands/render.js";
 import { registerUpdateCommand } from "./commands/update.js";
-import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES } from "./config.js";
+import { DEFAULT_API_URL, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES } from "./config.js";
 import { packageJson } from "./package.js";
-import { helpTheme } from "./theme.js";
+import { FREE_GROUP, PLUS_GROUP, formatHelp } from "./help.js";
 
 export function createProgram() {
   const program = new Command();
@@ -17,44 +17,27 @@ export function createProgram() {
   program
     .name("excalidraw")
     .description(
-      "Excalidraw from your terminal. Render scenes and convert Mermaid diagrams on your computer, free and without an account. With an Excalidraw+ API key, manage your workspace's scenes, collections and members.",
+      "Render Excalidraw drawings and Mermaid diagrams on your computer, free and without an account. With an Excalidraw+ API key, manage your workspace too.",
     )
+    .usage("<command> [options]")
     .version(packageJson.version, "-v, --version", "print the CLI version")
-    .optionsGroup("GLOBAL FLAGS")
+    .addOption(new Option("--api-url <url>", "API origin").env("EXCALIDRAW_API_URL").default(undefined, DEFAULT_API_URL))
+    .addOption(new Option("--api-key <key>", "API key, instead of the one login saved").env("EXCALIDRAW_API_KEY"))
     .addOption(
-      new Option("--api-url <url>", "API origin; default https://api.excalidraw.com").env(
-        "EXCALIDRAW_API_URL",
-      ),
-    )
-    .addOption(
-      new Option("--api-key <key>", 'API key; overrides the key "excalidraw login" saved').env(
-        "EXCALIDRAW_API_KEY",
-      ),
-    )
-    .addOption(
-      new Option(
-        "-o, --output <format>",
-        "output format: json or table. Table applies to list commands, whoami and update; other commands print JSON",
-      )
+      new Option("-o, --output <format>", "json, or table for lists, whoami and update")
         .env("EXCALIDRAW_OUTPUT")
         .default("json"),
     )
-    .option(
-      "--raw",
-      "print raw response text instead of parsed JSON where supported, and API error responses in full",
-      false,
+    .option("--raw", "print API responses as received, and API errors in full", false)
+    .addOption(
+      new Option("--retries <n>", "retries after rate limits (429) and failed reads")
+        .env("EXCALIDRAW_RETRIES")
+        .default(undefined, String(DEFAULT_RETRIES)),
     )
     .addOption(
-      new Option(
-        "--retries <n>",
-        `retries for rate-limited (429) responses and transient GET failures; default ${DEFAULT_RETRIES}`,
-      ).env("EXCALIDRAW_RETRIES"),
-    )
-    .addOption(
-      new Option(
-        "--request-timeout <ms>",
-        `deadline for each API request attempt, including reading the response; default ${DEFAULT_REQUEST_TIMEOUT_MS} ms`,
-      ).env("EXCALIDRAW_REQUEST_TIMEOUT"),
+      new Option("--request-timeout <ms>", "deadline for each API request")
+        .env("EXCALIDRAW_REQUEST_TIMEOUT")
+        .default(undefined, `${DEFAULT_REQUEST_TIMEOUT_MS} ms`),
     )
     .addHelpText(
       "after",
@@ -64,56 +47,34 @@ EXAMPLES
   $ excalidraw render drawing.excalidraw --out drawing.png
   $ excalidraw render deck.excalidraw --all-frames --out slides/
   $ excalidraw mermaid flow.mmd --out flow.svg
-
   With Excalidraw+:
   $ excalidraw login
-  $ excalidraw whoami
   $ excalidraw scenes list --all --output table
   $ excalidraw scenes content get <sceneId> --out scene.json
   $ excalidraw scenes render <sceneId> --out scene.png
-  $ excalidraw logs list --operation update --limit 10
 
 SETUP
-  render and mermaid work right away: they only need Chrome, Chromium, Edge or Firefox installed.
-  For Excalidraw+ commands, run "excalidraw login" once to save an API key. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead; both take precedence over the saved key.
-  Use --api-url for development, staging, or self-hosted API origins. Pass the origin only; /api/v1 is added automatically. Saved keys are per origin.
-  Run "excalidraw whoami" to confirm which workspace, key type and credential source the CLI is using.
+  render and mermaid only need an installed Chrome, Chromium, Edge or Firefox.
+  "excalidraw login" saves an API key for Excalidraw+ commands. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead.
+  --api-url points the CLI at a staging or self-hosted origin, without /api/v1. Keys are saved per origin.
 
 OUTPUT
-  Commands print formatted JSON by default. Use --output table for readable lists, or --raw for the raw API response text.
-  Render and mermaid commands with --out - write only the image or scene to stdout, without a JSON summary.
-  List commands accept --all to fetch every page. Retry notices are written to stderr so stdout stays machine-readable.
-
-LEARN MORE
-  Use "excalidraw <command> <subcommand> --help" for command-specific guidance.
+  Commands print JSON. --output table prints lists, whoami and update as tables, and --raw prints the API's response text.
+  With --out -, render and mermaid write only the image or scene to stdout. Retry notices go to stderr.
 `,
     )
     .showHelpAfterError()
     .showSuggestionAfterError();
 
-  program.configureHelp({
-    styleTitle: helpTheme.title,
-    styleUsage: helpTheme.usage,
-    styleCommandText: helpTheme.command,
-    styleCommandDescription: helpTheme.description,
-    styleOptionDescription: helpTheme.description,
-    styleSubcommandDescription: helpTheme.description,
-    styleArgumentDescription: helpTheme.description,
-    styleDescriptionText: helpTheme.description,
-    styleOptionText: helpTheme.option,
-    styleOptionTerm: helpTheme.option,
-    styleSubcommandText: helpTheme.subcommand,
-    styleSubcommandTerm: helpTheme.subcommand,
-    styleArgumentText: helpTheme.argument,
-    styleArgumentTerm: helpTheme.argument,
-  });
+  // Subcommands created after this inherit it.
+  program.configureHelp({ formatHelp });
 
-  program.commandsGroup("NO ACCOUNT NEEDED");
+  program.commandsGroup(FREE_GROUP);
   registerRenderCommand(program);
   registerMermaidCommand(program);
   registerUpdateCommand(program);
 
-  program.commandsGroup("EXCALIDRAW+ (needs an API key, see login)");
+  program.commandsGroup(PLUS_GROUP);
   registerLoginCommands(program);
   registerWhoamiCommand(program);
   registerScenesCommands(program);
@@ -121,9 +82,7 @@ LEARN MORE
   registerWorkspaceCommands(program);
   registerLogsCommands(program);
 
-  // Created last, so subcommands don't share it, and in a group so it isn't listed on its own.
-  // Subcommands created after it would list their help command under this group too.
-  program.commandsGroup("NO ACCOUNT NEEDED");
+  // Created last, so subcommands don't share it. The help leaves it out of the command list.
   program.helpCommand(true);
 
   return program;

@@ -5,8 +5,9 @@ import { ApiError, createClient } from "../client.js";
 import { DEFAULT_API_URL, parseGlobalOptions } from "../config.js";
 import { credentialsPath, readCredential, removeCredential, saveCredential } from "../credentials.js";
 import { stripControlCharacters } from "../io.js";
+import { FREE_GROUP, PLUS_GROUP } from "../help.js";
 import { packageJson } from "../package.js";
-import { brandBadge } from "../theme.js";
+import { brandBadge, freeAccent, plusAccent } from "../theme.js";
 import { fetchWorkspaceSummary } from "./whoami.js";
 
 import type { GlobalOptions } from "../config.js";
@@ -172,17 +173,16 @@ const FEATURES = [
 /** The CLI's name, then what works without an account next to what logging in adds. */
 function banner() {
   const column = 33;
-  const plus = chalk.hex("#a5a3f5");
   const pad = (text: string) => text + " ".repeat(Math.max(column - stripVTControlCharacters(text).length, 1));
   const free = (text: string) => text.replace("→", chalk.dim("→"));
   return [
     "",
     `  ${brandBadge("✎ Excalidraw CLI")} ${chalk.dim(`v${packageJson.version} · excalidraw.com`)}`,
     "",
-    `  ${pad(chalk.green.bold("Free, no account"))}${plus.bold("With Excalidraw+")}`,
-    ...FEATURES.map(([left, right]) => `  ${pad(`${chalk.green("✓")} ${free(left)}`)}${plus("✓")} ${right}`),
+    `  ${pad(freeAccent.bold(FREE_GROUP))}${plusAccent.bold(PLUS_GROUP)}`,
+    ...FEATURES.map(([left, right]) => `  ${pad(`${freeAccent("✓")} ${free(left)}`)}${plusAccent("✓")} ${right}`),
     "",
-    `  ${plus("✦")} ${chalk.bold("Great with AI agents:")} ${chalk.dim("JSON output, stdin and stdout, EXCALIDRAW_API_KEY")}`,
+    `  ${plusAccent("✦")} ${chalk.bold("Great with AI agents:")} ${chalk.dim("JSON output, stdin and stdout, EXCALIDRAW_API_KEY")}`,
     "",
   ].join("\n");
 }
