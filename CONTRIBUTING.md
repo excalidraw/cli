@@ -12,7 +12,7 @@ esbuild bundles `src/` with chalk, commander and zod into `dist/main.js` plus la
 
 `excalidraw mermaid` runs `@excalidraw/mermaid-to-excalidraw` (with Pele) and `@excalidraw/element`'s `convertToExcalidrawElements` in the same browser page as the renderer, from `dist/mermaid.js` (see `scripts/build-mermaid.mjs`), which the browser loads only for Mermaid conversions. Both measure text with the canvas, so the page loads the labels' fonts and lays the diagram out again before converting it.
 
-The build also writes `dist/reference.json`, every command's usage, arguments, options, examples and notes (see `src/reference.ts`). The [CLI docs](https://plus.excalidraw.com/docs/cli) are generated from the published package's copy and from this repository's README, so a release updates them: keep the README's section headings stable, and write each help line as one complete example or note.
+The build also writes `dist/reference.json`, every command's usage, arguments, options, examples and notes (see `src/reference.ts`). The [CLI docs](https://plus.excalidraw.com/docs/cli) are generated from the published package's copy and from the guides in `docs/`, which the package ships, so a release updates them: keep the guides' file names stable, and write each help line as one complete example or note. Keep the README short, and put the details in `docs/`.
 
 To update the renderer, bump its pinned version in `devDependencies`, run `node scripts/update-fonts.mjs @excalidraw/excalidraw@<version>` with a release that ships the same fonts, and rebuild. The build fails if the bundle's layout changed. The README's CJK fonts section names that release too.
 
