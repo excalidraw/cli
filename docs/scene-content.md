@@ -4,7 +4,7 @@
 
 `scenes content patch` merges a partial payload into the stored scene. Prefer it for automated edits, such as an agent adding or changing specific content. Send at least one of `elements`, `appState` or `files`:
 
-- Elements merge by ID, and the higher `version` wins; `versionNonce` breaks ties. Elements you leave out are kept. Send an element with `isDeleted: true` to remove it.
+- Elements merge by ID, and the higher `version` wins; `versionNonce` breaks ties. To change an element, send it with its `version` increased. Elements you leave out are kept. Send an element with `isDeleted: true` to remove it.
 - Files are added or replaced by ID.
 - From `appState`, only `viewBackgroundColor` and `lockedMultiSelections` are stored.
 

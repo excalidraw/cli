@@ -274,6 +274,7 @@ NOTES
   Flowcharts (including swimlane-beta), sequence, class, ER and state diagrams, Gantt charts, quadrant charts and timelines become editable shapes. Other types, such as pie charts, become one image.
   The format follows the --out extension (.excalidraw, .json, .png, .svg) unless --format is set. Other extensions get an Excalidraw scene.
   Uses an installed Chrome, Chromium, Edge or Firefox, also for scenes: it measures the text so shapes fit their labels.
+  With --out -, stdout gets only the scene, PNG or SVG, without the JSON summary. A syntax error names the line to fix.
   More: https://plus.excalidraw.com/docs/cli/mermaid
 `,
     )

@@ -327,7 +327,8 @@ EXAMPLES
   $ echo '{"appState":{"viewBackgroundColor":"#f8f9fa"}}' | excalidraw scenes content patch <sceneId> --file -
 
 NOTES
-  Elements merge by ID, and the higher version wins. Elements and files you leave out are kept; send an element with isDeleted: true to remove it.
+  Send at least one of elements, appState or files. Elements and files you leave out are kept.
+  Elements merge by ID, and the higher version wins: to change an element, send it with its version increased. Send it with isDeleted: true to remove it.
   Files are added or replaced by ID. From appState, only viewBackgroundColor and lockedMultiSelections are stored.
   More: https://plus.excalidraw.com/docs/cli/scene-content
 `,

@@ -60,7 +60,8 @@ SETUP
 
 OUTPUT
   Commands print JSON. --output table prints lists, whoami and update as tables, and --raw prints the API's response text.
-  With --out -, render and mermaid write only the image or scene to stdout. Retry notices go to stderr.
+  With --out -, render and mermaid write only the image or scene to stdout.
+  Errors and retry notices go to stderr, and any error exits with status 1.
 `,
     )
     .showHelpAfterError()
