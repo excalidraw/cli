@@ -10,6 +10,10 @@ import type { ImageOptions } from "./schemas.js";
  */
 export function waitForEveryFontFace() {
   const fonts = document.fonts;
+  // Excalidraw skips loading a family when check() reports it available. Chromium also reports it
+  // available when a system font has the same name (e.g. a locally installed Excalifont), and then
+  // draws with a fallback font while the bundled face is still loading. Always load instead.
+  fonts.check = () => false;
   const loadFonts = fonts.load.bind(fonts);
   fonts.load = async (font, text) => {
     try {
