@@ -17,16 +17,14 @@ const MIME_TYPES = {
   excalidraw: "application/vnd.excalidraw+json",
 } as const;
 
-const STDOUT_NOTES = `  With --out -, stdout contains only the PNG bytes or SVG markup, with no JSON summary, even with --raw or --output table. PNG is the default; pass --format svg for SVG.
-  Errors and retry notices go to stderr. Pipe stdout to an image consumer or redirect it to a file.`;
+// The most important notes. The rest are in docs/rendering.md and docs/mermaid.md.
+const FORMAT_NOTE = `  The format follows the --out extension, .png or .svg, unless --format is set. SVGs embed their fonts and have no size limit.`;
 
-const FORMAT_NOTES = `  The format follows the --out extension, .png or .svg, unless --format is set. Other extensions get PNG.
-  SVGs embed the fonts their text uses, so they look the same everywhere. --max-width and --max-height only apply to PNG.`;
+const FRAMES_NOTE = `  --all-frames writes each frame to the --out directory as its own file, numbered in presentation order, such as 01-intro.png.`;
 
-const FRAMES_NOTES = `  --all-frames writes each frame to the --out directory, numbered in presentation order, such as 01-intro.png, and prints them as JSON. --timeout applies to each frame.`;
+const STDOUT_NOTE = `  With --out -, stdout gets only the image, without the JSON summary. Errors and retry notices go to stderr.`;
 
-const FONT_NOTES = `  Excalidraw's fonts ship with the CLI, except Xiaolai, the hand-drawn CJK font that Excalifont and Virgil text falls back to. The files a scene's text needs are downloaded on first use from Excalidraw's CDN, npmmirror or jsDelivr, checked, and cached; without network access that text uses a system font.
-  Downloads go through the proxy HTTPS_PROXY or HTTP_PROXY names. --fonts-url sets other mirrors, or a local copy of @excalidraw/excalidraw's dist/prod folder, such as node_modules/@excalidraw/excalidraw/dist/prod.`;
+const RENDERING_DOCS = `  Fonts, proxies, browsers and size limits: https://plus.excalidraw.com/docs/cli/rendering`;
 
 function withBrowserOptions(command: Command) {
   return command
@@ -196,14 +194,11 @@ EXAMPLES
   $ node generate-scene.js | excalidraw render - --out - > drawing.png
 
 NOTES
-  Requires an installed Chrome, Chromium, Edge, or Firefox. Rendering runs locally with embedded images.
-  Firefox is used only when none of the others is found; a render then takes about 5 s instead of under 1 s.
-${FORMAT_NOTES}
-${FRAMES_NOTES}
-${FONT_NOTES}
-  The browser uses a temporary profile. External image URLs and live embeds are not loaded.
-  PNG output keeps the scene's aspect ratio and is capped at 64 million pixels.
-${STDOUT_NOTES}
+  Uses an installed Chrome, Chromium, Edge or Firefox. Nothing is uploaded.
+${FORMAT_NOTE}
+${FRAMES_NOTE}
+${STDOUT_NOTE}
+${RENDERING_DOCS}
 `,
     )
     .action(async (file: string, options, command: Command) => {
@@ -231,13 +226,11 @@ EXAMPLES
   $ excalidraw scenes render <sceneId> --out - > scene.png
 
 NOTES
-  Requires an API key with permission to read the scene content, and Chrome, Chromium, Edge, or Firefox.
-  Rendering uses a temporary browser profile. The API key is never passed to the browser.
-${FORMAT_NOTES}
-${FRAMES_NOTES}
-${FONT_NOTES}
-  Use "excalidraw render <file> --out <file>" to render a local file without an API key.
-${STDOUT_NOTES}
+  Needs an API key that can read the scene, and an installed Chrome, Chromium, Edge or Firefox. The key never reaches the browser.
+${FORMAT_NOTE}
+${FRAMES_NOTE}
+${STDOUT_NOTE}
+${RENDERING_DOCS}
 `,
     )
     .action(async (sceneId: string, options, command: Command) => {
@@ -278,14 +271,10 @@ EXAMPLES
   $ excalidraw mermaid flow.mmd --out flow.excalidraw && excalidraw scenes create --name "Flow" --collection-id <collectionId> --file flow.excalidraw
 
 NOTES
-  Flowcharts (including swimlane-beta), sequence, class, ER and state diagrams, Gantt charts, quadrant charts and timelines become editable shapes and arrows. Other diagram types Mermaid supports, such as pie charts, become one image.
-  Diagrams are parsed and laid out by Pele (https://pele.run), the engine behind Excalidraw's Mermaid import.
+  Flowcharts (including swimlane-beta), sequence, class, ER and state diagrams, Gantt charts, quadrant charts and timelines become editable shapes. Other types, such as pie charts, become one image.
   The format follows the --out extension (.excalidraw, .json, .png, .svg) unless --format is set. Other extensions get an Excalidraw scene.
-  A syntax error fails the command with the line and column to fix.
-  The image options (--scale, --theme, --padding, ...) apply to PNG and SVG output.
-  Requires an installed Chrome, Chromium, Edge, or Firefox, also for scene output: text is measured in the browser so shapes fit their labels.
-${FONT_NOTES}
-  With --out -, stdout contains only the scene JSON, PNG bytes, or SVG markup.
+  Uses an installed Chrome, Chromium, Edge or Firefox, also for scenes: it measures the text so shapes fit their labels.
+  More: https://plus.excalidraw.com/docs/cli/mermaid
 `,
     )
     .action(async (file: string, options, command: Command) => {

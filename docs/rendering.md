@@ -18,14 +18,14 @@ excalidraw scenes render <sceneId> --all-frames --out slides/
 # slides/01-title.png, slides/02-agenda.png, ...
 ```
 
-With a file path, the command prints the image's path and dimensions as JSON. Pass `--out -` to write the image to stdout instead, for example to pipe it into another program:
+With a file path, the command prints the image's path and dimensions as JSON. Pass `--out -` to write the image to stdout instead, for example to pipe it into another program. stdout then carries only the PNG bytes or SVG markup, even with `--raw` or `--output table`, and errors and retry notices go to stderr:
 
 ```bash
 node generate-scene.js | excalidraw render - --out - > drawing.png
 excalidraw scenes render <sceneId> --out - | magick png:- -resize 50% preview.png
 ```
 
-Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or Firefox (slower) if none of those is. The CLI doesn't download one. If it can't find yours, pass `--browser-path` or set `EXCALIDRAW_BROWSER_PATH`.
+Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or Firefox if none of those is. Firefox is slower: a render takes about 5 s instead of under 1 s. The CLI doesn't download a browser. If it can't find yours, pass `--browser-path` or set `EXCALIDRAW_BROWSER_PATH`; a binary named `firefox` is driven as Firefox. The browser runs with a temporary profile, and `scenes render` never passes your API key to it.
 
 | Option | Default | Notes |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or 
 | `--padding <px>` | `20` | Ignored for frames. |
 | `--theme <light\|dark>` | scene setting | |
 | `--transparent` | off | Transparent background. |
-| `--timeout <ms>` | `30000` | How long a render may take. |
+| `--timeout <ms>` | `30000` | How long a render may take, per frame with `--all-frames`. |
 
 - Images must be embedded in the file. Image URLs and website embeds aren't loaded.
 - PNGs keep the scene's aspect ratio and stay under 64 megapixels. When a limit makes a PNG smaller than `--scale` asks for, the command prints a warning. SVGs have no size limit.

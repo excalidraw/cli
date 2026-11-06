@@ -112,10 +112,9 @@ EXAMPLES
   $ generate-diagram | excalidraw scenes create --name "Generated" --collection-id <collectionId> --file -
 
 NOTES
-  Without --file the created scene starts empty; add canvas JSON later with "scenes content put" or "scenes content patch".
-  With --file, a full Excalidraw export (type: "excalidraw") replaces the empty scene via PUT, and a partial payload with elements, appState, or files is merged via PATCH. The file is validated before the scene is created; a full export's missing version, source, appState, and files are filled in.
-  If writing content fails, the error names the created scene ID so you can retry with "scenes content put".
-  The API requires a collection. Workspace API keys must pass a real collection ID; personal (uk-) API keys may also pass "private" for the key owner's private collection.
+  --file takes a full Excalidraw export or a partial payload with elements, appState or files, and is checked before the scene is created. Without it the scene starts empty.
+  Workspace API keys need a real collection ID; personal (uk-) keys may pass "private" for the owner's private collection.
+  More: https://plus.excalidraw.com/docs/cli/scene-content
 `,
     )
     .action(async (options, command: Command) => {
@@ -219,8 +218,7 @@ EXAMPLES
 
 NOTES
   Each frame in the scene is one slide. Sharing fails with HTTP 400 when the scene has no frames.
-  The link is created the first time and stays the same when sharing is turned off and on again.
-  The output says whether the slides are shared, and their URL; url is null while sharing is off.
+  The link stays the same when sharing is turned off and on again; url is null while it's off.
   Turning sharing on fails with HTTP 403 when a workspace admin has disabled scene sharing.
 `,
     )
@@ -299,9 +297,9 @@ EXAMPLES
 
 NOTES
   This is a full replacement: elements not present in the file are removed from the scene.
-  The file must contain elements. Missing type, version, source, appState, and files are filled in, and the file is checked before anything is sent.
-  The server recomputes sceneVersion and ignores any sceneVersion value in the file.
+  The file only needs elements; missing fields are filled in, and the file is checked before anything is sent.
   Connected editors are forced to reload. For most automated edits, use patch instead.
+  More: https://plus.excalidraw.com/docs/cli/scene-content
 `,
     )
     .action(async (sceneId: string, options, command: Command) => {
@@ -329,11 +327,9 @@ EXAMPLES
   $ echo '{"appState":{"viewBackgroundColor":"#f8f9fa"}}' | excalidraw scenes content patch <sceneId> --file -
 
 NOTES
-  Provide at least one of elements, appState, or files.
-  Elements merge by ID using version-based reconciliation: higher version wins, with versionNonce tie-breaking.
-  Omitted elements and files are preserved. Send elements with isDeleted: true to soft-delete them.
-  From appState, only viewBackgroundColor and lockedMultiSelections are stored. Files are added or replaced by file ID.
-  Agents should prefer patch when adding or changing specific content without owning the whole scene.
+  Elements merge by ID, and the higher version wins. Elements and files you leave out are kept; send an element with isDeleted: true to remove it.
+  Files are added or replaced by ID. From appState, only viewBackgroundColor and lockedMultiSelections are stored.
+  More: https://plus.excalidraw.com/docs/cli/scene-content
 `,
     )
     .action(async (sceneId: string, options, command: Command) => {
