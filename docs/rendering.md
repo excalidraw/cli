@@ -34,14 +34,14 @@ Rendering uses a browser that's already installed: Chrome, Edge or Chromium, or 
 | `--frame-id <id>` | | Render just this frame. |
 | `--all-frames` | off | Render each frame to its own file in the `--out` directory. |
 | `--scale <n>` | `1` | Resolution multiplier, up to 16. |
-| `--max-width`, `--max-height` | `2048` | PNG size limits in pixels, up to 16384. Raise them along with `--scale`. |
+| `--max-width`, `--max-height` | `16384` | Shrink the PNG to fit these sizes in pixels. |
 | `--padding <px>` | `20` | Ignored for frames. |
 | `--theme <light\|dark>` | scene setting | |
 | `--transparent` | off | Transparent background. |
 | `--timeout <ms>` | `30000` | How long a render may take. |
 
 - Images must be embedded in the file. Image URLs and website embeds aren't loaded.
-- PNGs keep the scene's aspect ratio and stay under 64 megapixels.
+- PNGs keep the scene's aspect ratio and stay under 64 megapixels. When a limit makes a PNG smaller than `--scale` asks for, the command prints a warning. SVGs have no size limit.
 - Chinese, Japanese and Korean text in the hand-drawn font, Excalifont, is drawn in Xiaolai, which is downloaded the first time a scene uses it, then cached. Without network access, that text uses a system font. As in Excalidraw itself, CJK text in the other fonts, such as Virgil or Comic Shanns, always uses a system font. See [CJK fonts](#cjk-fonts) for proxies, mirrors and offline use.
 - Emoji come from your system's fonts.
 

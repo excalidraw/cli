@@ -568,6 +568,27 @@ test("very small size limits still produce a PNG", async () => {
   }
 });
 
+test("--scale is only limited by --max-width and --max-height when they're passed, and says so", async () => {
+  // A 1000×100 shape with the default padding: 1040×140 pixels at --scale 1.
+  const fixture = renderFixture();
+  const scene = { ...fixture, elements: [{ ...fixture.elements[1]!, frameId: null, x: 0, y: 0, width: 1000, height: 100 }], files: {} };
+
+  const full = await runPngCli(["render", "-", "--out", "-", "--scale", "3"], scene);
+  const fullPng = readStdoutPng(full.stdout);
+  assert.deepEqual([fullPng.width, fullPng.height], [3120, 420], "wider than the old 2048-pixel default");
+  assert.equal(full.stderr.toString(), "");
+
+  const capped = await runPngCli(["render", "-", "--out", "-", "--scale", "3", "--max-width", "2080"], scene);
+  assert.equal(readStdoutPng(capped.stdout).width, 2080);
+  assert.match(
+    capped.stderr.toString(),
+    /The PNG is smaller than --scale 3 would make it because of --max-width 2080\. Raise it, up to 16384, or render an SVG/,
+  );
+
+  const huge = await runPngCli(["render", "-", "--out", "-", "--scale", "16", "--max-width", "16384"], { ...scene, elements: [{ ...scene.elements[0]!, height: 1000 }] });
+  assert.match(huge.stderr.toString(), /PNGs are limited to 64 megapixels/);
+});
+
 test("the deadline stops browser startup and rendering without overwriting the output", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "excalidraw-timeout-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

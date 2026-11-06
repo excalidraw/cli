@@ -50,8 +50,8 @@ function withImageOptions(command: Command) {
   return command
     .option("--padding <pixels>", "padding in scene pixels; ignored for frames; default 20")
     .option("--scale <number>", "resolution multiplier, up to 16; default 1")
-    .option("--max-width <pixels>", "maximum PNG width, up to 16384; default 2048")
-    .option("--max-height <pixels>", "maximum PNG height, up to 16384; default 2048")
+    .option("--max-width <pixels>", "maximum PNG width, up to 16384; default 16384")
+    .option("--max-height <pixels>", "maximum PNG height, up to 16384; default 16384")
     .option("--theme <theme>", "light or dark; defaults to the scene's export preference")
     .option("--transparent", "export with a transparent background");
 }
@@ -133,7 +133,11 @@ async function renderToOutput(
     // Each frame is written as soon as it's drawn, so a large deck never sits in memory. The
     // directory is made then too, after the scene and its frames passed validation.
     const frames: Record<string, unknown>[] = [];
+    const warnings = new Set<string>();
     const { warning } = await renderScene(scene, options, async (image, index, count) => {
+      if (image.warning) {
+        warnings.add(image.warning);
+      }
       if (index === 0) {
         await mkdir(directory, { recursive: true });
       }
@@ -147,6 +151,7 @@ async function renderToOutput(
         height: image.height,
       });
     });
+    warnings.forEach(warn);
     warn(warning);
     emitOutput(command, { ...summary, mimeType, frames });
     return;
@@ -156,8 +161,9 @@ async function renderToOutput(
   const { warning } = await renderScene(scene, options, async (image) => {
     rendered = image;
   });
-  warn(warning);
   const image = rendered!;
+  warn(image.warning);
+  warn(warning);
   await writeOutputFile(options.out, image.data);
   if (options.out !== STDIO_PATH) {
     emitOutput(command, {
@@ -304,6 +310,7 @@ ${FONT_NOTES}
         parsed,
         format === "excalidraw" ? undefined : { format, options: parsed },
       );
+      warn(result.image?.warning);
       warn(warning);
 
       const summary = { path: resolve(parsed.out), mimeType: MIME_TYPES[format] };

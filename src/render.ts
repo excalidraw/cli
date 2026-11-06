@@ -257,7 +257,14 @@ async function withRenderPage<T>(options: BrowserOptions, fn: (context: RenderPa
   return { result, warning: fonts.warning() };
 }
 
-export type RenderedImage = { data: Buffer; width: number; height: number; frame: RenderElement | null };
+export type RenderedImage = {
+  data: Buffer;
+  width: number;
+  height: number;
+  frame: RenderElement | null;
+  /** Why the PNG is smaller than --scale asked for, if it is. */
+  warning?: string;
+};
 
 /** Draws the scene, or one frame of it, in the page. */
 async function renderInPage(
@@ -285,7 +292,24 @@ async function renderInPage(
   if (format === "png" && !data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) {
     throw new Error("The browser could not encode the scene as PNG. Try smaller output dimensions.");
   }
-  return { data, width: result.width, height: result.height, frame };
+  const warning = "limitedBy" in result ? scaleWarning(result.limitedBy, options) : undefined;
+  return { data, width: result.width, height: result.height, frame, ...(warning && { warning }) };
+}
+
+/** Says which limit made a PNG smaller than --scale asked for, and how to get the full size. */
+function scaleWarning(limitedBy: "maxWidth" | "maxHeight" | "pixels" | null, options: ImageOptions) {
+  if (!limitedBy) {
+    return undefined;
+  }
+  const smaller = `The PNG is smaller than --scale ${options.scale} would make it`;
+  if (limitedBy === "pixels") {
+    return `${smaller}: PNGs are limited to 64 megapixels. Render an SVG for full size.`;
+  }
+  const [flag, value] = limitedBy === "maxWidth" ? ["--max-width", options.maxWidth] : ["--max-height", options.maxHeight];
+  if (value < 16384) {
+    return `${smaller} because of ${flag} ${value}. Raise it, up to 16384, or render an SVG for full size.`;
+  }
+  return `${smaller}: PNGs are limited to 16384 pixels per side. Render an SVG for full size.`;
 }
 
 /**

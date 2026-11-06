@@ -83,8 +83,8 @@ const ImageOptionsSchema = z.object({
   out: z.string().min(1),
   padding: z.coerce.number().int().min(0).max(1000).default(20),
   scale: z.coerce.number().positive().max(16).default(1),
-  maxWidth: z.coerce.number().int().min(1).max(16384).default(2048),
-  maxHeight: z.coerce.number().int().min(1).max(16384).default(2048),
+  maxWidth: z.coerce.number().int().min(1).max(16384).default(16384),
+  maxHeight: z.coerce.number().int().min(1).max(16384).default(16384),
   theme: z.enum(["light", "dark"]).optional(),
   transparent: z.boolean().default(false),
   browserPath: z.preprocess(

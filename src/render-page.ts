@@ -108,6 +108,8 @@ export async function renderInBrowser({
     };
   }
 
+  // The limit that made the PNG smaller than --scale asked for, if any.
+  let limitedBy = null as "maxWidth" | "maxHeight" | "pixels" | null;
   const canvas = await exportToCanvas({
     data: {
       elements: scene.elements,
@@ -127,12 +129,18 @@ export async function renderInBrowser({
         if (!Number.isFinite(paddedWidth) || !Number.isFinite(paddedHeight)) {
           throw new Error("Scene bounds are too large to render.");
         }
-        const scale = Math.min(
-          options.scale,
-          options.maxWidth / paddedWidth,
-          options.maxHeight / paddedHeight,
-          Math.sqrt(64_000_000 / (paddedWidth * paddedHeight)),
-        );
+        const limits: [typeof limitedBy, number][] = [
+          ["maxWidth", options.maxWidth / paddedWidth],
+          ["maxHeight", options.maxHeight / paddedHeight],
+          ["pixels", Math.sqrt(64_000_000 / (paddedWidth * paddedHeight))],
+        ];
+        let scale = options.scale;
+        for (const [limit, limitScale] of limits) {
+          if (limitScale < scale) {
+            scale = limitScale;
+            limitedBy = limit;
+          }
+        }
         if (!Number.isFinite(scale) || scale <= 0) {
           throw new Error("Scene bounds are too large to render.");
         }
@@ -148,7 +156,7 @@ export async function renderInBrowser({
     },
   });
   const data = canvas.toDataURL("image/png").split(",")[1]!;
-  const result = { data, width: canvas.width, height: canvas.height };
+  const result = { data, width: canvas.width, height: canvas.height, limitedBy };
   // Release the canvas's memory before the next frame is drawn.
   canvas.width = 0;
   canvas.height = 0;
