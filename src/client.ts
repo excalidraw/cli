@@ -1,6 +1,8 @@
 import chalk from "chalk";
 import { z } from "zod/v4";
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES, resolveConfig } from "./config.js";
+import { httpFetch } from "./http.js";
+import { userAgent } from "./package.js";
 
 import type { Command } from "commander";
 import type { GlobalOptions } from "./config.js";
@@ -117,11 +119,12 @@ export class PublicApiClient {
       let response: Response;
 
       try {
-        response = await fetch(url, {
+        response = await httpFetch(url, {
           method,
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
             Accept: "application/json",
+            "User-Agent": userAgent,
             ...(body === undefined ? {} : { "Content-Type": "application/json" }),
           },
           body: body === undefined ? undefined : JSON.stringify(body),

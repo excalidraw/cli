@@ -125,7 +125,8 @@ export function renderFixture() {
 }
 
 /** One Excalifont text element per line, stacked vertically, with no images or frames. */
-export function textFixture(lines: string[]) {
+/** Text elements, one per line, in Excalifont (5) or another font family such as Virgil (1). */
+export function textFixture(lines: string[], fontFamily = 5) {
   return {
     type: "excalidraw",
     version: 2,
@@ -140,7 +141,7 @@ export function textFixture(lines: string[]) {
       height: 25,
       text,
       originalText: text,
-      fontFamily: 5,
+      fontFamily,
       fontSize: 20,
       lineHeight: 1.25,
       textAlign: "left",

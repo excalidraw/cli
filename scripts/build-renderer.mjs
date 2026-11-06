@@ -5,11 +5,13 @@
 //   browser parses ~0.5 MB of module instead of ~20 MB and only fetches the fonts a scene uses.
 // - Xiaolai (CJK, 12.7 MB of the 13 MB of fonts) doesn't ship. dist/fonts/remote.json lists its
 //   files, which the CLI downloads from CDNs on first use, checks against the sha256, and caches.
-// - The font-subsetting WebAssembly is dropped. Excalidraw only uses it to embed fonts in SVG exports.
+// - The font-subsetting WebAssembly, which Excalidraw only uses to embed fonts in SVG exports, becomes
+//   dist/wasm/<n>.txt, still base64. The bundle reads it from a global instead, which render-page.ts
+//   fills in before an SVG export, so PNG renders don't parse 1.7 MB of base64.
 // - Xiaolai, the CJK fallback behind Excalifont, stops claiming characters Excalifont already has.
 //   document.fonts.load() loads every face whose unicode-range matches the text, in every family
 //   of the font stack, so "€" would otherwise load a Xiaolai file whose glyph is never drawn.
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { FONT_DATA_URL, readUtilsBundle, sha256 } from "./embedded-fonts.mjs";
 
 // render.ts serves this origin to the browser.
@@ -31,13 +33,15 @@ let source = (await readUtilsBundle()).replace(FONT_DATA_URL, (_, base64) => {
 });
 expect("fonts in scripts/fonts.json", fonts.size, Object.keys(manifest.fonts).length);
 
-// WebAssembly binaries start with "\0asm", which is "AGFzbQ" in base64.
-let wasm = 0;
-source = source.replace(/"AGFzbQ[A-Za-z0-9+/=]*"/g, () => {
-  wasm += 1;
-  return '""';
+// WebAssembly binaries start with "\0asm", which is "AGFzbQ" in base64. Each literal is decoded
+// inside a lazy module initializer, which runs on the first SVG export. render-page.ts uses this global.
+const WASM_GLOBAL = "excalidrawSubsetWasm";
+const wasm = [];
+source = source.replace(/"AGFzbQ[A-Za-z0-9+/=]*"/g, (literal) => {
+  wasm.push(literal.slice(1, -1));
+  return `globalThis.${WASM_GLOBAL}[${wasm.length - 1}]`;
 });
-expect("font-subsetting WebAssembly modules", wasm, 2);
+expect("font-subsetting WebAssembly modules", wasm.length, 2);
 
 // Font faces are declared as {uri:<variable>,descriptors:{unicodeRange:"..."}}.
 const urlVariables = new Map(
@@ -73,6 +77,11 @@ for (const [hash, bytes] of fonts) {
   }
 }
 await writeFile(new URL("fonts/remote.json", dist), JSON.stringify({ release: manifest.release, fonts: remote }));
+await rm(new URL("wasm/", dist), { recursive: true, force: true });
+await mkdir(new URL("wasm/", dist), { recursive: true });
+for (const [index, base64] of wasm.entries()) {
+  await writeFile(new URL(`wasm/${index}.txt`, dist), base64);
+}
 await writeFile(new URL("renderer.js", dist), source, "latin1");
 
 function expect(what, actual, expected) {

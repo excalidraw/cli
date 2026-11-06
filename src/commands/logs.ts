@@ -50,10 +50,9 @@ EXAMPLES
   $ excalidraw logs list --all --date-from 2024-01-01 --output table
 
 NOTES
-  Prefer cursor pagination for sequential scans. Use page pagination for page-number navigation.
-  --all follows cursor pagination until hasMore is false and prints { count, logs, availableActions }.
-  --all cannot be combined with --page; use --cursor to choose where the scan starts.
-  The response includes availableActions; unsupported --action values are ignored by the API.
+  Use --cursor to read the log in order, or --page to jump to a page number.
+  --all follows the cursor to the end and prints { count, logs, availableActions }. It can't be combined with --page.
+  availableActions lists the --action values; the API ignores others.
 `,
     )
     .action(async (options, command: Command) => {

@@ -1,3 +1,6 @@
+import { statSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { z } from "zod/v4";
 
 /**
@@ -58,6 +61,14 @@ export const SceneUpdateOptionsSchema = z
     message: "Provide at least one of --name, --collection-id, or --pinned.",
   });
 
+export const SceneShareOptionsSchema = z.object({
+  access: z.enum(["view", "edit", "none"]),
+});
+
+export const SceneShareSlidesOptionsSchema = z.object({
+  off: z.boolean().default(false),
+});
+
 export const ContentFileOptionsSchema = z.object({
   file: z.string().min(1),
 });
@@ -66,13 +77,14 @@ export const ContentGetOptionsSchema = z.object({
   out: z.string().min(1).optional(),
 });
 
-export const RenderOptionsSchema = z.object({
+export const ImageFormatSchema = z.enum(["png", "svg"]);
+
+const ImageOptionsSchema = z.object({
   out: z.string().min(1),
-  frameId: z.string().min(1).optional(),
   padding: z.coerce.number().int().min(0).max(1000).default(20),
   scale: z.coerce.number().positive().max(16).default(1),
-  maxWidth: z.coerce.number().int().min(1).max(16384).default(2048),
-  maxHeight: z.coerce.number().int().min(1).max(16384).default(2048),
+  maxWidth: z.coerce.number().int().min(1).max(16384).default(16384),
+  maxHeight: z.coerce.number().int().min(1).max(16384).default(16384),
   theme: z.enum(["light", "dark"]).optional(),
   transparent: z.boolean().default(false),
   browserPath: z.preprocess(
@@ -80,23 +92,72 @@ export const RenderOptionsSchema = z.object({
     z.string().min(1).optional(),
   ),
   timeout: z.coerce.number().int().min(1).max(600000).default(30000),
-  // Comma-separated base URLs that mirror the font release, or "none" to disable downloads.
+  // Comma-separated mirrors of the font release's dist/prod/ folder: http(s) URLs, local folders or
+  // file: URLs, or "none" to disable downloads. Folders become file: URLs.
   fontsUrl: z.preprocess(
     (value) => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined),
     z
       .string()
-      .transform((value) =>
-        value === "none" ? [] : value.split(",").map((url) => url.trim().replace(/\/?$/, "/")),
-      )
-      .refine(
-        (urls) => urls.every((url) => URL.canParse(url) && /^https?:$/.test(new URL(url).protocol)),
-        "expected http(s) URLs separated by commas, or none",
-      )
+      .transform((value, context) => {
+        if (value.toLowerCase() === "none") {
+          return [];
+        }
+        const urls: string[] = [];
+        for (const entry of value.split(",").map((part) => part.trim())) {
+          const problem = mirrorProblem(entry);
+          if (problem) {
+            context.issues.push({ code: "custom", message: problem, input: value });
+            return z.NEVER;
+          }
+          // A scheme, but not a Windows drive letter such as C:\fonts.
+          const url = /^[a-z][a-z0-9+.-]+:/i.test(entry) ? entry : pathToFileURL(resolve(entry)).href;
+          urls.push(url.replace(/\/?$/, "/"));
+        }
+        return urls;
+      })
       .optional(),
   ),
 });
 
+export type ImageOptions = z.infer<typeof ImageOptionsSchema>;
+
+/** Why an entry of --fonts-url can't be a mirror, if it can't. Catches typos that would silently become folders. */
+function mirrorProblem(entry: string) {
+  if (entry === "") {
+    return "expected http(s) URLs or folders separated by commas, but one entry is empty";
+  }
+  if (entry.toLowerCase() === "none") {
+    return "none turns font downloads off, so it can't be combined with mirrors";
+  }
+  if (/^[a-z][a-z0-9+.-]+:/i.test(entry)) {
+    return URL.canParse(entry) && /^(https?|file):$/.test(new URL(entry).protocol)
+      ? undefined
+      : `${entry} is not an http(s) or file: URL`;
+  }
+  return statSync(resolve(entry), { throwIfNoEntry: false })?.isDirectory()
+    ? undefined
+    : `${entry} is not a folder; mirror URLs start with https://`;
+}
+
+export const RenderOptionsSchema = ImageOptionsSchema.extend({
+  format: ImageFormatSchema.optional(),
+  frameId: z.string().min(1).optional(),
+  allFrames: z.boolean().default(false),
+})
+  .refine((value) => !(value.allFrames && value.frameId !== undefined), {
+    message: "Use either --frame-id or --all-frames, not both.",
+  })
+  .refine((value) => !(value.allFrames && value.out === "-"), {
+    message: "--all-frames writes one file per frame; pass a directory to --out.",
+  });
+
 export type RenderOptions = z.infer<typeof RenderOptionsSchema>;
+
+export const MermaidOptionsSchema = ImageOptionsSchema.extend({
+  format: z.enum(["excalidraw", ...ImageFormatSchema.options]).optional(),
+  elbow: z.boolean().default(false),
+  fontSize: z.coerce.number().int().min(8).max(200).optional(),
+});
 
 export const JsonObjectSchema = z.record(z.string(), z.unknown());
 

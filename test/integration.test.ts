@@ -22,24 +22,30 @@ test("help output exposes the command tree", async () => {
         "collections",
         "workspace",
         "logs",
-        "formatted JSON",
+        "Commands print JSON",
         "-o, --output <format>",
         "--retries <n>",
         "--request-timeout <ms>",
         "--raw",
         "--api-key <key>",
         "--api-url <url>",
+        "Free, no account",
+        "With Excalidraw+ · needs an API key",
+        "(default json, env EXCALIDRAW_OUTPUT)",
       ],
     },
-    { args: ["login", "--help"], expected: ["plus.excalidraw.com/docs/api/authentication", "credentials.json", "--api-key uk-..."] },
+    {
+      args: ["login", "--help"],
+      expected: ["plus.excalidraw.com/docs/api/authentication", "credentials.json", "--api-key uk-...", "OAuth) is coming soon"],
+    },
     { args: ["scenes", "--help"], expected: ["list", "get <sceneId>", "create", "update", "delete", "content", "render"] },
     { args: ["render", "--help"], expected: ["--out <file>", "--frame-id <id>", "--browser-path <path>", "No account or API key"] },
     { args: ["scenes", "render", "--help"], expected: ["--out <file>", "--scale <number>", "--max-width <pixels>"] },
     { args: ["scenes", "list", "--help"], expected: ["--all", "--collection-id <id>", "--limit <number>"] },
     { args: ["scenes", "create", "--help"], expected: ["--collection-id <id>", "--file <file>", "--pinned"] },
     { args: ["scenes", "update", "--help"], expected: ["--no-pinned"] },
-    { args: ["scenes", "content", "--help"], expected: ["get [options] <sceneId>", "put", "patch"] },
-    { args: ["collections", "scenes", "--help"], expected: ["list [options] <collectionId>", "create"] },
+    { args: ["scenes", "content", "--help"], expected: ["get <sceneId>", "put <sceneId>", "patch <sceneId>"] },
+    { args: ["collections", "scenes", "--help"], expected: ["list <collectionId>", "create <collectionId>"] },
     { args: ["workspace", "users", "--help"], expected: ["list", "get <userId>", "update", "remove"] },
     {
       args: ["workspace", "invites", "--help"],
@@ -64,6 +70,10 @@ test("help output exposes the command tree", async () => {
 
     for (const expected of item.expected) {
       assert.match(stdout, new RegExp(escapeRegExp(expected)));
+    }
+    // The top-level command groups don't leak into subcommands' help.
+    if (item.args.length > 1) {
+      assert.doesNotMatch(stdout, /Free, no account|With Excalidraw\+/, item.args.join(" "));
     }
   }
 });
@@ -132,6 +142,7 @@ test("missing API key prints a setup hint", async () => {
       assert.equal(error.code, 1);
       assert.match(error.stderr, /Configuration error:/);
       assert.match(error.stderr, /Missing API key for https:\/\/api\.excalidraw\.com\./);
+      assert.match(error.stderr, /Only Excalidraw\+ commands need a key: "excalidraw render" and "excalidraw mermaid" work without one\./);
       assert.match(error.stderr, /Run "excalidraw login", pass --api-key <key>, or set EXCALIDRAW_API_KEY\./);
       assert.doesNotMatch(error.stderr, /expected string, received undefined/);
       return true;

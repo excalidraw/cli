@@ -211,6 +211,34 @@ liveTest("scenes update", async (t) => {
   assert.equal(unpinned.metadata.pinned, false);
 });
 
+liveTest("scenes share turns the public link on and off", async (t) => {
+  assert.ok(sceneId, "previous step should create sceneId");
+  const shared = await runStepJson<{ access: string; url: string | null }>(t, "Share scene", [
+    "scenes",
+    "share",
+    sceneId,
+    "--access",
+    "view",
+  ]);
+  assert.equal(shared.access, "view");
+  assert.ok(shared.url, "a shared scene should have a link");
+
+  const off = await runStepJson<{ access: string; url: string | null }>(t, "Unshare scene", [
+    "scenes",
+    "share",
+    sceneId,
+    "--access",
+    "none",
+  ]);
+  assert.deepEqual(off, { access: "none", url: null });
+});
+
+liveTest("scenes share-slides needs frames", async () => {
+  assert.ok(sceneId, "previous step should create sceneId");
+  // The scene holds a rectangle and an ellipse, no frames.
+  await assert.rejects(runCli(["scenes", "share-slides", sceneId]), /HTTP 400/);
+});
+
 liveTest("scenes create --file writes content in one step", async (t) => {
   assert.ok(collectionId, "previous step should create collectionId");
   assert.ok(putFile, "setup should create putFile");

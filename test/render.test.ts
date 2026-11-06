@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdtemp, open, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, open, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
 import type { TestContext } from "node:test";
 import { PNG } from "pngjs";
 import { FONT_DATA_URL, readUtilsBundle, sha256 } from "../scripts/embedded-fonts.mjs";
-import { assertExecError, cliEnv, runWithStdout } from "./helpers.ts";
+import { assertExecError, cliEnv, escapeRegExp, runWithStdout, startProxy } from "./helpers.ts";
 import { renderFixture, textFixture } from "./render-fixture.ts";
 
 const execFileAsync = promisify(execFile);
@@ -264,6 +264,109 @@ test("CJK text downloads the font files it needs once, then renders them from th
   assert.notDeepEqual(readStdoutPng(offline.stdout).data, firstPng.data, "the downloaded font is drawn");
 });
 
+test("Chinese text in Excalifont is drawn in Xiaolai; other fonts use a system font, as in the editor", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-render-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const mirror = await startFontMirror(t);
+  const text = ["流程图：开始 → 结束", "你好，世界"];
+
+  const downloaded = await runPngCli(["render", "-", "--out", "-"], textFixture(text), {
+    env: { EXCALIDRAW_FONTS_URL: mirror.url, XDG_CACHE_HOME: directory },
+  });
+  assert.equal(downloaded.stderr.toString(), "");
+  assert.ok(mirror.requests.length > 0, "Excalifont text downloads Xiaolai");
+  assert.ok(mirror.requests.every((path) => path.startsWith("/fonts/Xiaolai/")));
+
+  const offline = await runPngCli(["render", "-", "--out", "-"], textFixture(text), {
+    env: { EXCALIDRAW_FONTS_URL: "none", XDG_CACHE_HOME: join(directory, "empty") },
+  });
+  assert.notDeepEqual(
+    readStdoutPng(downloaded.stdout).data,
+    readStdoutPng(offline.stdout).data,
+    "the Chinese text is drawn in Xiaolai, not a system font",
+  );
+
+  // Only Excalifont falls back to Xiaolai in Excalidraw; Virgil and Comic Shanns use a system font.
+  const requests = mirror.requests.length;
+  for (const fontFamily of [1, 8]) {
+    const other = await runPngCli(["render", "-", "--out", "-"], textFixture(text, fontFamily), {
+      env: { EXCALIDRAW_FONTS_URL: mirror.url, XDG_CACHE_HOME: join(directory, `family-${fontFamily}`) },
+    });
+    assert.equal(other.stderr.toString(), "");
+  }
+  assert.equal(mirror.requests.length, requests);
+});
+
+test("font downloads go through HTTP_PROXY, except to hosts NO_PROXY lists", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-render-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const mirror = await startFontMirror(t);
+  const proxy = await startProxy();
+  t.after(() => proxy.close());
+  const scene = textFixture(["你好，世界"]);
+  const mirrorHost = new URL(mirror.url).host;
+
+  const proxied = await runPngCli(["render", "-", "--out", "-"], scene, {
+    env: { EXCALIDRAW_FONTS_URL: mirror.url, XDG_CACHE_HOME: join(directory, "proxied"), HTTP_PROXY: proxy.url },
+  });
+  assert.equal(proxied.stderr.toString(), "");
+  assert.ok(proxy.requests.length > 0, "the downloads went through the proxy");
+  // Only the CLI's downloads: the browser gets no proxy settings, so its own background requests stay off the proxy.
+  assert.ok(proxy.requests.every((request) => request.includes(mirrorHost)), proxy.requests.join(", "));
+  const downloads = mirror.requests.length;
+  assert.ok(downloads > 0);
+
+  const proxyRequests = proxy.requests.length;
+  const direct = await runPngCli(["render", "-", "--out", "-"], scene, {
+    env: {
+      EXCALIDRAW_FONTS_URL: mirror.url,
+      XDG_CACHE_HOME: join(directory, "direct"),
+      HTTP_PROXY: proxy.url,
+      NO_PROXY: "127.0.0.1",
+    },
+  });
+  assert.equal(proxy.requests.length, proxyRequests, "NO_PROXY skips the proxy");
+  assert.equal(mirror.requests.length, downloads * 2);
+  assert.deepEqual(readStdoutPng(direct.stdout).data, readStdoutPng(proxied.stdout).data);
+});
+
+test("--fonts-url takes a local copy of the fonts, as a folder or a file: URL, without caching it", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-render-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  // Laid out like node_modules/@excalidraw/excalidraw/dist/prod.
+  for (const [path, font] of await remoteFonts()) {
+    await mkdir(join(directory, "prod", dirname(path)), { recursive: true });
+    await writeFile(join(directory, "prod", path), font);
+  }
+  const mirror = await startFontMirror(t);
+  const scene = textFixture(["你好，世界"]);
+  const reference = await runPngCli(["render", "-", "--out", "-"], scene, {
+    env: { EXCALIDRAW_FONTS_URL: mirror.url, XDG_CACHE_HOME: join(directory, "mirror-cache") },
+  });
+
+  for (const fontsUrl of ["prod", pathToFileURL(join(directory, "prod")).href]) {
+    const cache = join(directory, "local-cache");
+    const local = await runPngCli(["render", "-", "--out", "-", "--fonts-url", fontsUrl], scene, {
+      cwd: directory,
+      env: { XDG_CACHE_HOME: cache },
+    });
+    assert.equal(local.stderr.toString(), "", fontsUrl);
+    assert.deepEqual(readStdoutPng(local.stdout).data, readStdoutPng(reference.stdout).data, fontsUrl);
+    assert.equal(existsSync(join(cache, "excalidraw-cli/fonts")), false, "a local copy isn't cached");
+  }
+
+  // A folder without the fonts, such as another package's dist/.
+  await mkdir(join(directory, "empty"));
+  const missing = await runPngCli(["render", "-", "--out", "-", "--fonts-url", "empty"], scene, {
+    cwd: directory,
+    env: { XDG_CACHE_HOME: join(directory, "missing-cache") },
+  });
+  assert.match(
+    missing.stderr.toString(),
+    new RegExp(`Could not download \\d+ font files? for this scene's text \\(${escapeRegExp(join(directory, "empty"))}/fonts/Xiaolai/[^:]+: ENOENT.*local copy of @excalidraw/excalidraw's dist/prod folder`),
+  );
+});
+
 test("a font that fails to download doesn't make the renderer draw before the others arrive", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "excalidraw-render-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -465,6 +568,27 @@ test("very small size limits still produce a PNG", async () => {
   }
 });
 
+test("--scale is only limited by --max-width and --max-height when they're passed, and says so", async () => {
+  // A 1000×100 shape with the default padding: 1040×140 pixels at --scale 1.
+  const fixture = renderFixture();
+  const scene = { ...fixture, elements: [{ ...fixture.elements[1]!, frameId: null, x: 0, y: 0, width: 1000, height: 100 }], files: {} };
+
+  const full = await runPngCli(["render", "-", "--out", "-", "--scale", "3"], scene);
+  const fullPng = readStdoutPng(full.stdout);
+  assert.deepEqual([fullPng.width, fullPng.height], [3120, 420], "wider than the old 2048-pixel default");
+  assert.equal(full.stderr.toString(), "");
+
+  const capped = await runPngCli(["render", "-", "--out", "-", "--scale", "3", "--max-width", "2080"], scene);
+  assert.equal(readStdoutPng(capped.stdout).width, 2080);
+  assert.match(
+    capped.stderr.toString(),
+    /The PNG is smaller than --scale 3 would make it because of --max-width 2080\. Raise it, up to 16384, or render an SVG/,
+  );
+
+  const huge = await runPngCli(["render", "-", "--out", "-", "--scale", "16", "--max-width", "16384"], { ...scene, elements: [{ ...scene.elements[0]!, height: 1000 }] });
+  assert.match(huge.stderr.toString(), /PNGs are limited to 64 megapixels/);
+});
+
 test("the deadline stops browser startup and rendering without overwriting the output", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "excalidraw-timeout-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -490,5 +614,205 @@ test("the deadline stops browser startup and rendering without overwriting the o
       return true;
     });
     assert.equal(await readFile(out, "utf8"), "original");
+  }
+});
+
+test("SVG output follows the --out extension or --format, and embeds the fonts its text uses", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-svg-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const input = join(directory, "scene.excalidraw");
+  const out = join(directory, "scene.svg");
+  await writeFile(input, JSON.stringify(renderFixture()));
+
+  const { stdout } = await runCli(["render", input, "--out", out, "--frame-id", "frame", "--scale", "2"]);
+  assert.deepEqual(JSON.parse(stdout), { path: out, mimeType: "image/svg+xml", width: 400, height: 200, frameId: "frame" });
+  const svg = await readFile(out, "utf8");
+  assert.match(svg, /^<svg [^>]*viewBox="0 0 200 100" width="400" height="200"/);
+  assert.match(svg, /@font-face \{ font-family: Excalifont; src: url\(data:font\/woff2;base64,/);
+  // Subset to the text's glyphs: a whole Excalifont file is several times larger.
+  assert.ok(svg.length < 30_000, `${svg.length} bytes`);
+  assert.match(svg, /data:image\/png;base64,/, "embedded image is kept");
+
+  const piped = await runCli(["render", input, "--out", "-", "--format", "svg", "--frame-id", "frame", "--scale", "2"]);
+  assert.equal(piped.stdout, svg, "stdout matches file output");
+});
+
+test("SVGs are valid XML, and a frame's SVG clips its children without embedding the whole scene", async () => {
+  const fixture = renderFixture();
+  const rect = fixture.elements.find((element) => element.id === "rect")!;
+  const text = fixture.elements.find((element) => element.id === "text")!;
+  const scene = {
+    ...fixture,
+    elements: [
+      ...fixture.elements.filter((element) => element.id !== "text"),
+      // Sticks out of the frame on the right.
+      { ...rect, id: "overflow", x: 150, width: 200 },
+      // Excalidraw keeps non-breaking spaces, which HTML serializes as &nbsp;, an entity XML lacks.
+      { ...text, text: "A B", originalText: "A B" },
+    ],
+    appState: { ...fixture.appState, exportEmbedScene: true },
+  };
+  const xmlEntities = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/i;
+
+  const whole = (await runCli(["render", "-", "--out", "-", "--format", "svg"], scene)).stdout;
+  assert.doesNotMatch(whole, xmlEntities);
+  assert.match(whole, /A B/);
+  assert.match(whole, /<!-- payload-start -->/, "the scene asked to embed itself");
+
+  const frame = (await runCli(["render", "-", "--out", "-", "--format", "svg", "--frame-id", "frame"], scene)).stdout;
+  assert.doesNotMatch(frame, xmlEntities);
+  assert.match(frame, /<clipPath id="frame"><rect [^>]*width="200" height="100"/);
+  assert.match(frame, /clip-path="url\(#frame\)"/);
+  assert.doesNotMatch(frame, /payload-start/, "a frame's SVG doesn't carry the whole scene");
+  // exportingFrame still keeps the frame's outline and name out.
+  assert.doesNotMatch(frame, />Example</);
+});
+
+test("a renderer file missing from the install fails the render right away", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-install-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  // An install without the SVG export's WebAssembly.
+  const cli = await copyPackage(directory);
+  await rm(join(directory, "dist/wasm/0.txt"));
+
+  const started = Date.now();
+  await assert.rejects(runCli(["render", "-", "--out", "-", "--format", "svg"], renderFixture(), { cli }), (error: unknown) => {
+    assertExecError(error);
+    assert.match(error.stderr, /Could not read .*0\.txt \(ENOENT\)\. Reinstall the CLI to restore it\./);
+    return true;
+  });
+  assert.ok(Date.now() - started < 20_000, "fails before the 30 s deadline");
+});
+
+test("--all-frames renders each frame in presentation order into the --out directory", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-frames-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fixture = renderFixture();
+  const frame = fixture.elements.find((element) => element.id === "frame")!;
+  // A second, unnamed frame to the right that plays first, and one without area that's skipped.
+  const scene = {
+    ...fixture,
+    elements: [
+      ...fixture.elements,
+      { ...frame, id: "first", name: null, x: 1000, width: 100, height: 50, customData: { slidesOrder: 0 } },
+      { ...frame, id: "flat", name: "Flat", x: 2000, height: 0 },
+    ],
+  };
+  const out = join(directory, "slides");
+  const { stdout } = await runCli(["render", "-", "--all-frames", "--out", out], scene);
+  assert.deepEqual(JSON.parse(stdout), {
+    mimeType: "image/png",
+    frames: [
+      { frameId: "first", name: null, path: join(out, "01-first.png"), width: 100, height: 50 },
+      { frameId: "frame", name: "Example", path: join(out, "02-example.png"), width: 200, height: 100 },
+    ],
+  });
+  assert.deepEqual((await readdir(out)).sort(), ["01-first.png", "02-example.png"]);
+  assert.deepEqual(pixel(PNG.sync.read(await readFile(join(out, "02-example.png"))), 30, 70), [0, 255, 0, 255]);
+
+  await runCli(["render", "-", "--all-frames", "--format", "svg", "--out", out], scene);
+  assert.match(await readFile(join(out, "02-example.svg"), "utf8"), /^<svg /);
+});
+
+test("mermaid converts a diagram into editable elements sized to their labels, or renders it", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const input = join(directory, "flow.mmd");
+  await writeFile(input, "flowchart LR\n  A[A rather long label] -->|yes| B{Decide}\n  B --> C[Done]\n");
+
+  const out = join(directory, "flow.excalidraw");
+  const { stdout } = await runCli(["mermaid", input, "--out", out]);
+  const summary = JSON.parse(stdout);
+  assert.deepEqual({ ...summary, elements: undefined }, { path: out, mimeType: "application/vnd.excalidraw+json", elements: undefined });
+  const scene = JSON.parse(await readFile(out, "utf8"));
+  assert.equal(scene.type, "excalidraw");
+  assert.equal(summary.elements, scene.elements.length);
+  const byId = new Map(scene.elements.map((element: { id: string }) => [element.id, element]));
+  const texts = scene.elements.filter((element: { type: string }) => element.type === "text");
+  assert.deepEqual(texts.map((text: { text: string }) => text.text).sort(), ["A rather long label", "Decide", "Done", "yes"]);
+  const label = texts.find((text: { text: string }) => text.text === "A rather long label");
+  const container = byId.get(label.containerId) as { type: string; width: number };
+  assert.equal(container.type, "rectangle");
+  // Measured in Excalifont: the label fills most of its box instead of a fallback font's narrower width.
+  assert.ok(label.width > 150 && label.width < container.width, `label ${label.width}, box ${container.width}`);
+  assert.equal(scene.elements.filter((element: { type: string }) => element.type === "arrow").length, 2);
+
+  const png = join(directory, "flow.png");
+  const rendered = JSON.parse((await runCli(["mermaid", input, "--out", png, "--scale", "2"])).stdout);
+  assert.equal(rendered.mimeType, "image/png");
+  const image = PNG.sync.read(await readFile(png));
+  assert.deepEqual([image.width, image.height], [rendered.width, rendered.height]);
+  assert.ok(image.width > 600);
+
+  const svg = await runCli(["mermaid", input, "--out", "-", "--format", "svg", "--elbow"]);
+  assert.match(svg.stdout, /^<svg /);
+});
+
+test("mermaid turns Gantt charts and timelines into editable elements, and other types such as pie charts into an image", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-types-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const convert = async (name: string, definition: string) => {
+    const input = join(directory, `${name}.mmd`);
+    const out = join(directory, `${name}.excalidraw`);
+    await writeFile(input, definition);
+    await runCli(["mermaid", input, "--out", out]);
+    const { elements } = JSON.parse(await readFile(out, "utf8")) as { elements: { type: string; text?: string }[] };
+    return { types: new Set(elements.map((element) => element.type)), texts: elements.flatMap((element) => element.text ?? []) };
+  };
+
+  const gantt = await convert(
+    "gantt",
+    "gantt\n  title Launch\n  dateFormat YYYY-MM-DD\n  section Build\n  Design :a1, 2026-01-01, 5d\n  Ship :after a1, 3d\n",
+  );
+  assert.ok(!gantt.types.has("image"));
+  assert.ok(gantt.types.has("rectangle"));
+  for (const text of ["Launch", "Build", "Design", "Ship"]) {
+    assert.ok(gantt.texts.includes(text), `the Gantt chart has the text "${text}"`);
+  }
+
+  const timeline = await convert("timeline", "timeline\n  title Releases\n  2025 : CLI 0.1\n  2026 : CLI 0.3\n");
+  assert.ok(!timeline.types.has("image"));
+  assert.deepEqual(timeline.texts.sort(), ["2025", "2026", "CLI 0.1", "CLI 0.3", "Releases"]);
+
+  const pie = await convert("pie", 'pie title Pets\n  "Dogs" : 3\n  "Cats" : 2\n');
+  assert.deepEqual([...pie.types], ["image"]);
+});
+
+test("mermaid reports syntax errors with their position", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-error-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const input = join(directory, "flow.mmd");
+  const out = join(directory, "flow.excalidraw");
+  await writeFile(input, "flowchart LR\n  A --> B\n  B -->> C\n");
+  await assert.rejects(runCli(["mermaid", input, "--out", out]), (error: unknown) => {
+    assertExecError(error);
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /^Could not convert the Mermaid diagram: Parse error on line 3:/);
+    return true;
+  });
+  assert.equal(existsSync(out), false);
+});
+
+test("mermaid sizes shapes to Chinese labels drawn in Xiaolai", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-cjk-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const mirror = await startFontMirror(t);
+  const input = join(directory, "flow.mmd");
+  const out = join(directory, "flow.excalidraw");
+  await writeFile(input, "flowchart LR\n  A[开始处理用户请求] --> B{验证通过？}\n  B -->|是| C[返回结果]\n");
+
+  const { stderr } = await runCli(["mermaid", input, "--out", out], undefined, {
+    env: { EXCALIDRAW_FONTS_URL: mirror.url, XDG_CACHE_HOME: directory },
+  });
+  assert.equal(stderr, "");
+  assert.ok(mirror.requests.length > 0, "the labels' Xiaolai files are downloaded before measuring");
+  const scene = JSON.parse(await readFile(out, "utf8"));
+  const byId = new Map(scene.elements.map((element: { id: string }) => [element.id, element]));
+  const texts = scene.elements.filter((element: { type: string }) => element.type === "text");
+  assert.deepEqual(texts.map((text: { text: string }) => text.text).sort(), ["开始处理用户请求", "是", "返回结果", "验证通过？"].sort());
+  for (const text of texts.filter((text: { containerId: string | null }) => text.containerId)) {
+    const container = byId.get(text.containerId) as { width: number };
+    assert.ok(!text.text.includes("\n"), `"${text.text}" fits its shape without wrapping`);
+    assert.ok(text.width < container.width, `"${text.text}" ${text.width} < ${container.width}`);
   }
 });

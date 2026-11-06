@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
-import { assertExecError, cliEnv, escapeRegExp, runWithStdout } from "./helpers.ts";
+import { assertExecError, cliEnv, escapeRegExp, runWithStdout, startProxy } from "./helpers.ts";
 
 const execFileAsync = promisify(execFile);
 const cliPath = fileURLToPath(new URL("../dist/main.js", import.meta.url));
@@ -18,6 +18,7 @@ type ApiCall = {
   path: string;
   query: Record<string, string>;
   body: Record<string, unknown> | undefined;
+  userAgent: string | undefined;
 };
 
 type ApiContext = {
@@ -73,7 +74,13 @@ function createMockApi() {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const body: ApiCall["body"] = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined;
-    calls.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body });
+    calls.push({
+      method: req.method,
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams),
+      body,
+      userAgent: req.headers["user-agent"],
+    });
 
     const send = (status: number, payload: unknown, headers: OutgoingHttpHeaders = {}) => {
       res.writeHead(status, { "content-type": "application/json", ...headers });
@@ -117,6 +124,16 @@ function createMockApi() {
     if (url.pathname === "/api/v1/scenes/scene_1/content" && req.method === "PATCH") {
       assert.ok(body);
       return send(200, { type: "excalidraw", version: 2, source: "api", elements: [], appState: body.appState, files: {}, sceneVersion: "2" });
+    }
+
+    if (url.pathname === "/api/v1/scenes/scene_1/link-sharing" && req.method === "PUT") {
+      assert.ok(body);
+      return send(200, { access: body.access, url: body.access === "none" ? null : "https://link.excalidraw.com/readonly/abc" });
+    }
+
+    if (url.pathname === "/api/v1/scenes/scene_1/shared-slides" && req.method === "PUT") {
+      assert.ok(body);
+      return send(200, { enabled: body.enabled, url: body.enabled ? "https://link.excalidraw.com/p/abc" : null });
     }
 
     // Sends the headers and part of the body, then drops the connection or never finishes.
@@ -955,4 +972,104 @@ test("--picture none clears the picture", async () => {
 
     assert.deepEqual(calls.map((call) => call.body), [{ picture: null }, { picture: "https://example.com/logo.png" }]);
   });
+});
+
+test("scenes share sets the public link's access and prints the link", async () => {
+  await withApi(async ({ origin, calls }) => {
+    const { stdout } = await runCli(["scenes", "share", "scene_1", "--access", "view"], { origin });
+    assert.deepEqual(JSON.parse(stdout), { access: "view", url: "https://link.excalidraw.com/readonly/abc" });
+    await runCli(["scenes", "share", "scene_1", "--access", "none"], { origin });
+
+    assert.deepEqual(
+      calls.map(({ method, path, body }) => ({ method, path, body })),
+      [
+        { method: "PUT", path: "/api/v1/scenes/scene_1/link-sharing", body: { access: "view" } },
+        { method: "PUT", path: "/api/v1/scenes/scene_1/link-sharing", body: { access: "none" } },
+      ],
+    );
+
+    await assert.rejects(runCli(["scenes", "share", "scene_1", "--access", "public"], { origin }), (error) => {
+      assertExecError(error);
+      assert.match(error.stderr, /--access/);
+      return true;
+    });
+    assert.equal(calls.length, 2);
+  });
+});
+
+test("scenes share-slides turns the presentation link on, or off with --off", async () => {
+  await withApi(async ({ origin, calls }) => {
+    const { stdout } = await runCli(["scenes", "share-slides", "scene_1"], { origin });
+    assert.deepEqual(JSON.parse(stdout), { enabled: true, url: "https://link.excalidraw.com/p/abc" });
+    await runCli(["scenes", "share-slides", "scene_1", "--off"], { origin });
+
+    assert.deepEqual(calls.map((call) => call.body), [{ enabled: true }, { enabled: false }]);
+    assert.ok(calls.every((call) => call.method === "PUT" && call.path === "/api/v1/scenes/scene_1/shared-slides"));
+  });
+});
+
+test("API requests go through HTTP_PROXY, as curl's do, unless NO_PROXY lists the host", async () => {
+  const proxy = await startProxy();
+  try {
+    await withApi(async ({ origin, calls }) => {
+      const { stdout } = await runCli(["scenes", "content", "get", "scene_1"], { origin, env: { HTTP_PROXY: proxy.url } });
+      assert.equal(JSON.parse(stdout).type, "excalidraw");
+      assert.ok(proxy.requests.length > 0, "the request went through the proxy");
+      assert.ok(proxy.requests.every((request) => request.includes(new URL(origin).host)), proxy.requests.join(", "));
+
+      const proxied = proxy.requests.length;
+      await runCli(["scenes", "content", "get", "scene_1"], { origin, env: { HTTP_PROXY: proxy.url, NO_PROXY: "127.0.0.1" } });
+      assert.equal(proxy.requests.length, proxied);
+      assert.equal(calls.length, 2);
+    });
+  } finally {
+    await proxy.close();
+  }
+});
+
+test("a proxy without a scheme is an HTTP proxy, as in curl, and one the CLI can't use is skipped with a warning", async () => {
+  const proxy = await startProxy();
+  try {
+    await withApi(async ({ origin, calls }) => {
+      const get = (env: NodeJS.ProcessEnv) => runCli(["scenes", "content", "get", "scene_1"], { origin, env });
+
+      await get({ HTTP_PROXY: proxy.url.replace("http://", "") });
+      assert.ok(proxy.requests.length > 0, "the request went through the proxy");
+
+      // Node's own proxy support is off with NODE_USE_ENV_PROXY=0; the CLI's isn't.
+      const proxied = proxy.requests.length;
+      await get({ HTTP_PROXY: proxy.url, NODE_USE_ENV_PROXY: "0" });
+      assert.ok(proxy.requests.length > proxied);
+
+      // The password in the value isn't printed.
+      const { stderr } = await get({ HTTP_PROXY: "socks4://user:secret@127.0.0.1:9" });
+      assert.equal(
+        stderr,
+        "Ignoring HTTP_PROXY: it is a socks4 proxy. Use an http://, https:// or socks5:// proxy URL. Connecting directly instead.\n",
+      );
+      assert.equal(calls.length, 3, "every request reached the API");
+    });
+  } finally {
+    await proxy.close();
+  }
+});
+
+test("API requests identify the CLI and its version in the User-Agent, also through a proxy", async () => {
+  const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  // The pattern the API counts as CLI usage (excalidraw-plus apps/public-api/src/lib/requestUsage.ts).
+  const CLI_USER_AGENT = /^excalidraw-cli\/(\S+)/;
+  const proxy = await startProxy();
+  try {
+    await withApi(async ({ origin, calls }) => {
+      await runCli(["scenes", "content", "get", "scene_1"], { origin });
+      await runCli(["scenes", "content", "get", "scene_1"], { origin, env: { HTTP_PROXY: proxy.url } });
+      assert.ok(proxy.requests.length > 0);
+      for (const { userAgent } of calls) {
+        assert.equal(userAgent?.match(CLI_USER_AGENT)?.[1], version, userAgent);
+        assert.match(userAgent!, /^excalidraw-cli\/\S+ node\/\d+\.\d+\.\d+ [a-z0-9]+-[a-z0-9]+$/);
+      }
+    });
+  } finally {
+    await proxy.close();
+  }
 });

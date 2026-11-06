@@ -12,6 +12,8 @@ import {
   JsonObjectSchema,
   SceneCreateOptionsSchema,
   SceneListOptionsSchema,
+  SceneShareOptionsSchema,
+  SceneShareSlidesOptionsSchema,
   SceneUpdateOptionsSchema,
   parseOptions,
 } from "../schemas.js";
@@ -19,7 +21,7 @@ import {
 export function registerScenesCommands(program: Command) {
   const scenes = program
     .command("scenes")
-    .summary("List, create, update, delete, and edit workspace scenes")
+    .summary("List, create, update, share, delete, and edit workspace scenes")
     .description(
       "Work with Excalidraw scenes, including metadata, collection placement, and drawing content.",
     )
@@ -110,13 +112,9 @@ EXAMPLES
   $ generate-diagram | excalidraw scenes create --name "Generated" --collection-id <collectionId> --file -
 
 NOTES
-  Without --file the created scene starts empty; add canvas JSON later with "scenes content put" or "scenes content patch".
-  With --file, a full Excalidraw export (type: "excalidraw") replaces the empty scene via PUT, and a partial
-  payload with elements, appState, or files is merged via PATCH. The file is validated before the scene is created;
-  a full export's missing version, source, appState, and files are filled in.
-  If writing content fails, the error names the created scene ID so you can retry with "scenes content put".
-  The API requires a collection. Workspace API keys must pass a real collection ID;
-  personal (uk-) API keys may also pass "private" for the key owner's private collection.
+  --file takes a full Excalidraw export or a partial payload with elements, appState or files, and is checked before the scene is created. Without it the scene starts empty.
+  Workspace API keys need a real collection ID; personal (uk-) keys may pass "private" for the owner's private collection.
+  More: https://plus.excalidraw.com/docs/cli/scene-content
 `,
     )
     .action(async (options, command: Command) => {
@@ -169,6 +167,66 @@ NOTES
     )
     .action(async (sceneId: string, _options, command: Command) => {
       const result = await getClient(command).request("DELETE", apiPath`/scenes/${sceneId}`);
+      emitOutput(command, result);
+    });
+
+  scenes
+    .command("share")
+    .summary("Turn a scene's public link on or off")
+    .description(
+      "Set what anyone with the scene's public link may do, and print the link. This is the link from the scene's Share dialog.",
+    )
+    .argument("<sceneId>", "scene ID to share")
+    .requiredOption("--access <access>", "view, edit, or none to turn the link off")
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes share <sceneId> --access view
+  $ excalidraw scenes share <sceneId> --access edit
+  $ excalidraw scenes share <sceneId> --access none
+  $ excalidraw scenes share <sceneId> --access view | jq -r .url
+
+NOTES
+  Anyone with the link can open the scene without signing in. With view or edit, they can also read and write comments.
+  The output is the link's access and its URL; url is null once the link is off.
+  Turning the link on fails with HTTP 403 when a workspace admin has disabled scene sharing.
+`,
+    )
+    .action(async (sceneId: string, options, command: Command) => {
+      const body = parseOptions(SceneShareOptionsSchema, options);
+      const result = await getClient(command).request("PUT", apiPath`/scenes/${sceneId}/link-sharing`, {
+        body,
+      });
+      emitOutput(command, result);
+    });
+
+  scenes
+    .command("share-slides")
+    .summary("Share a scene's frames as a presentation")
+    .description(
+      "Turn the scene's shared presentation link on, or off with --off, and print the link. Anyone with the link can step through the scene's frames as slides without signing in.",
+    )
+    .argument("<sceneId>", "scene ID whose frames to share")
+    .option("--off", "turn the shared slides link off", false)
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes share-slides <sceneId>
+  $ excalidraw scenes share-slides <sceneId> --off
+
+NOTES
+  Each frame in the scene is one slide. Sharing fails with HTTP 400 when the scene has no frames.
+  The link stays the same when sharing is turned off and on again; url is null while it's off.
+  Turning sharing on fails with HTTP 403 when a workspace admin has disabled scene sharing.
+`,
+    )
+    .action(async (sceneId: string, options, command: Command) => {
+      const { off } = parseOptions(SceneShareSlidesOptionsSchema, options);
+      const result = await getClient(command).request("PUT", apiPath`/scenes/${sceneId}/shared-slides`, {
+        body: { enabled: !off },
+      });
       emitOutput(command, result);
     });
 
@@ -239,10 +297,9 @@ EXAMPLES
 
 NOTES
   This is a full replacement: elements not present in the file are removed from the scene.
-  The file must contain elements. Missing type, version, source, appState, and files are filled in,
-  and the file is checked before anything is sent.
-  The server recomputes sceneVersion and ignores any sceneVersion value in the file.
+  The file only needs elements; missing fields are filled in, and the file is checked before anything is sent.
   Connected editors are forced to reload. For most automated edits, use patch instead.
+  More: https://plus.excalidraw.com/docs/cli/scene-content
 `,
     )
     .action(async (sceneId: string, options, command: Command) => {
@@ -270,11 +327,10 @@ EXAMPLES
   $ echo '{"appState":{"viewBackgroundColor":"#f8f9fa"}}' | excalidraw scenes content patch <sceneId> --file -
 
 NOTES
-  Provide at least one of elements, appState, or files.
-  Elements merge by ID using version-based reconciliation: higher version wins, with versionNonce tie-breaking.
-  Omitted elements and files are preserved. Send elements with isDeleted: true to soft-delete them.
-  From appState, only viewBackgroundColor and lockedMultiSelections are stored. Files are added or replaced by file ID.
-  Agents should prefer patch when adding or changing specific content without owning the whole scene.
+  Send at least one of elements, appState or files. Elements and files you leave out are kept.
+  Elements merge by ID, and the higher version wins: to change an element, send it with its version increased. Send it with isDeleted: true to remove it.
+  Files are added or replaced by ID. From appState, only viewBackgroundColor and lockedMultiSelections are stored.
+  More: https://plus.excalidraw.com/docs/cli/scene-content
 `,
     )
     .action(async (sceneId: string, options, command: Command) => {

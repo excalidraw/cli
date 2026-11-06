@@ -8,9 +8,13 @@ pnpm run build       # typecheck src/, then bundle it into dist/
 pnpm run typecheck   # typecheck src/ and test/
 ```
 
-esbuild bundles `src/` with chalk, commander and zod into `dist/main.js` plus lazily loaded chunks, so playwright-core is the only runtime dependency. Keep those libraries in `devDependencies`. playwright-core is pinned to an exact version because it drives whatever Chrome the user has installed; bump it on purpose and run `pnpm run test:render` before releasing. The build also turns the prebuilt browser bundle from `@excalidraw/utils` into `dist/renderer.js` (see `scripts/build-renderer.mjs`), so users don't install the whole package. Its inlined fonts become files in `dist/fonts/` that the browser requests only when a scene needs them, and the font-subsetting WebAssembly, which only SVG export uses, is dropped. Xiaolai, the 13 MB CJK font, doesn't ship: `dist/fonts/remote.json` lists its files, which the CLI downloads from CDN mirrors on first use, checks against their sha256, and caches. `scripts/fonts.json` identifies each font by sha256 and gives its path in the `@excalidraw/excalidraw` release the mirrors serve.
+esbuild bundles `src/` with chalk, commander and zod into `dist/main.js` plus lazily loaded chunks, so playwright-core is the only runtime dependency. Keep those libraries in `devDependencies`. playwright-core is pinned to an exact version because it drives whatever Chrome the user has installed; bump it on purpose and run `pnpm run test:render` before releasing. The build also turns the prebuilt browser bundle from `@excalidraw/utils` into `dist/renderer.js` (see `scripts/build-renderer.mjs`), so users don't install the whole package. Its inlined fonts become files in `dist/fonts/` that the browser requests only when a scene needs them, and the font-subsetting WebAssembly, which only SVG export uses, becomes base64 text in `dist/wasm/`, loaded only for SVGs. Xiaolai, the 13 MB CJK font, doesn't ship: `dist/fonts/remote.json` lists its files, which the CLI downloads from CDN mirrors on first use, checks against their sha256, and caches. `scripts/fonts.json` identifies each font by sha256 and gives its path in the `@excalidraw/excalidraw` release the mirrors serve.
 
-To update the renderer, bump its pinned version in `devDependencies`, run `node scripts/update-fonts.mjs @excalidraw/excalidraw@<version>` with a release that ships the same fonts, and rebuild. The build fails if the bundle's layout changed.
+`excalidraw mermaid` runs `@excalidraw/mermaid-to-excalidraw` (with Pele) and `@excalidraw/element`'s `convertToExcalidrawElements` in the same browser page as the renderer, from `dist/mermaid.js` (see `scripts/build-mermaid.mjs`), which the browser loads only for Mermaid conversions. Both measure text with the canvas, so the page loads the labels' fonts and lays the diagram out again before converting it.
+
+The build also writes `dist/reference.json`, every command's usage, arguments, options, examples and notes (see `src/reference.ts`). The [CLI docs](https://plus.excalidraw.com/docs/cli) are generated from the published package's copy and from the guides in `docs/`, which the package ships, so a release updates them: keep the guides' file names stable, and write each help line as one complete example or note. Keep the README short, and put the details in `docs/`.
+
+To update the renderer, bump its pinned version in `devDependencies`, run `node scripts/update-fonts.mjs @excalidraw/excalidraw@<version>` with a release that ships the same fonts, and rebuild. The build fails if the bundle's layout changed. The README's CJK fonts section names that release too.
 
 ## Tests
 
@@ -27,7 +31,7 @@ pnpm run test:render
 EXCALIDRAW_BROWSER_PATH=/path/to/chromium pnpm run test:render   # if no browser is found
 ```
 
-These render local fixtures and scenes from a mock API with an installed Chrome, Chromium or Edge, then check PNG dimensions and pixels. Run them once more with `EXCALIDRAW_BROWSER_PATH=/path/to/firefox` when you touch the renderer, since Firefox is the fallback. Font downloads go to a local mock mirror with a temporary cache, so the tests never use the network or your font cache.
+These render local fixtures and scenes from a mock API with an installed Chrome, Chromium or Edge, then check PNG dimensions and pixels. Run them once more with `EXCALIDRAW_BROWSER_PATH=/path/to/firefox` when you touch the renderer, since Firefox is the fallback. A snap-packaged Firefox can't read the profile Playwright writes to `/tmp`; point `TMPDIR` at a folder the snap can reach, such as `~/snap/firefox/common/tmp`. Font downloads go to a local mock mirror with a temporary cache, so the tests never use the network or your font cache.
 
 `pnpm run bench` (after a build) times complete commands and reports package and install sizes; add `--install` to measure a real install with dependencies.
 
@@ -44,6 +48,10 @@ The e2e suite runs real commands against a live workspace and deletes the resour
 ## CI
 
 Every pull request runs the offline, rendering (with Chrome) and live API tests on Node 22. The live API tests use the test workspace key from the `EXCALIDRAW_E2E_API_KEY` secret, and `EXCALIDRAW_API_URL` from a repository variable if set. Pull requests from forks don't get the key, so their live API tests skip; a maintainer can push a fork's changes to a branch here to run them.
+
+## Pull requests
+
+Write the notes as [.github/PULL_REQUEST_GUIDE.md](.github/PULL_REQUEST_GUIDE.md) describes: short bullets about what changes for users, screenshots of anything visible, and test results.
 
 ## Releasing
 

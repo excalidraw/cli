@@ -28,10 +28,8 @@ EXAMPLES
 
 NOTES
   The package manager's output goes to stderr, so stdout carries only the JSON result.
-  A CLI run through npx, pnpm dlx or bunx, or installed as a project dependency, isn't updated:
-  the command says what to run instead.
-  When a newer version is out, commands run in a terminal say so, at most once a day. Set
-  EXCALIDRAW_NO_UPDATE_NOTIFIER=1 to turn that off. The check uses npm_config_registry if set.
+  A CLI run through npx, pnpm dlx or bunx, or installed as a project dependency, isn't updated: the command says what to run instead.
+  When a newer version is out, commands run in a terminal say so, at most once a day. Set EXCALIDRAW_NO_UPDATE_NOTIFIER=1 to turn that off. The check uses npm_config_registry if set.
 `,
     )
     .action(async (options: { check: boolean }, command: Command) => {
