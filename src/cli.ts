@@ -17,7 +17,7 @@ export function createProgram() {
   program
     .name("excalidraw")
     .description(
-      "Render Excalidraw drawings and Mermaid diagrams on your computer, free and without an account. With an Excalidraw+ API key, manage your workspace too.",
+      "Render Excalidraw drawings and Mermaid diagrams on your computer, free and without an account. Log in to Excalidraw+ to manage your workspace too.",
     )
     .usage("<command> [options]")
     .version(packageJson.version, "-v, --version", "print the CLI version")
@@ -55,8 +55,8 @@ EXAMPLES
 
 SETUP
   render and mermaid only need an installed Chrome, Chromium, Edge or Firefox.
-  "excalidraw login" saves an API key for Excalidraw+ commands. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead.
-  --api-url points the CLI at a staging or self-hosted origin, without /api/v1. Keys are saved per origin.
+  "excalidraw login" logs in to Excalidraw+ with the browser, or saves an API key. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead.
+  --api-url points the CLI at a staging or self-hosted origin, without /api/v1. Logins are saved per origin.
 
 OUTPUT
   Commands print JSON. --output table prints lists, whoami and update as tables, and --raw prints the API's response text.

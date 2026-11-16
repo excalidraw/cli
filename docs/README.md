@@ -1,6 +1,6 @@
 # Excalidraw CLI
 
-Render Excalidraw drawings and Mermaid diagrams from your terminal, free and without an account. With an [Excalidraw+](https://plus.excalidraw.com) API key, manage your workspace too.
+Render Excalidraw drawings and Mermaid diagrams from your terminal, free and without an account. Log in to [Excalidraw+](https://plus.excalidraw.com) to manage your workspace too.
 
 ## Install
 
@@ -32,13 +32,13 @@ excalidraw mermaid flow.mmd --out flow.svg
 
 ### With Excalidraw+
 
-Workspace commands need an Excalidraw+ API key. Create one in Excalidraw+ under **Account settings → MCP/API key** (a personal key) or **Workspace settings → MCP/API Keys**; the [authentication docs](https://plus.excalidraw.com/docs/api/authentication) explain both. Logging in with the browser (OAuth) is coming soon.
+Workspace commands need a login. `excalidraw login` logs in with the browser, or saves an API key: create one in Excalidraw+ under **Account settings → MCP/API key** (a personal key) or **Workspace settings → MCP/API Keys**; the [authentication docs](https://plus.excalidraw.com/docs/api/authentication) explain both.
 
 ```bash
-# Paste your API key once; later commands use it
+# Log in once; later commands use it
 excalidraw login
 
-# Check which workspace the key belongs to
+# Check which workspace you're logged in to
 excalidraw whoami
 
 # Create a collection, then a scene in it from a local file
@@ -65,12 +65,12 @@ No account needed:
 | `mermaid` | Convert a Mermaid diagram into an Excalidraw scene, PNG or SVG |
 | `update` | Update the CLI to the latest version |
 
-With an Excalidraw+ API key:
+With an Excalidraw+ login:
 
 | Command | What it does |
 | --- | --- |
-| `login` | Check an API key and save it for later commands |
-| `logout` | Remove the saved API key |
+| `login` | Log in with the browser or an API key, and save the login for later commands |
+| `logout` | Remove the saved login, and revoke a browser login |
 | `whoami` | Show the workspace, key type, credential source and API origin in use |
 | `scenes` | List, create, rename, move, pin and trash scenes |
 | `scenes share` | Turn a scene's public view or edit link on or off |

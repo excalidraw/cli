@@ -17,7 +17,7 @@
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@excalidraw/cli"></a>
 </p>
 
-Render Excalidraw drawings and Mermaid diagrams from your terminal, free and without an account. With an [Excalidraw+](https://plus.excalidraw.com) API key, manage your workspace too.
+Render Excalidraw drawings and Mermaid diagrams from your terminal, free and without an account. Log in to [Excalidraw+](https://plus.excalidraw.com) to manage your workspace too.
 
 ## Features
 

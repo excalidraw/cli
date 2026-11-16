@@ -138,7 +138,7 @@ test("scenes render still requires API authentication", async () => {
     ),
     (error: unknown) => {
       assertExecError(error);
-      assert.match(error.stderr, /Missing API key/);
+      assert.match(error.stderr, /Not logged in to/);
       return true;
     },
   );

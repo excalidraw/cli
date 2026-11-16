@@ -3,6 +3,7 @@ import { readCredential } from "./credentials.js";
 import { emptyToUndefined } from "./schemas.js";
 
 import type { Command } from "commander";
+import type { Credential } from "./credentials.js";
 import type { $ZodIssue } from "zod/v4/core";
 
 export const DEFAULT_API_URL = "https://api.excalidraw.com";
@@ -24,7 +25,7 @@ const OutputOptionsSchema = z.object({
 
 const ConfigSchema = OutputOptionsSchema.extend({
   apiUrl: z.preprocess(emptyToUndefined, z.url().default(DEFAULT_API_URL)),
-  // Blank means unset, so the key saved by `excalidraw login` applies.
+  // Blank means unset, so the login saved by `excalidraw login` applies.
   apiKey: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   retries: z.preprocess(
     emptyToUndefined,
@@ -46,7 +47,7 @@ export type GlobalOptions = z.infer<typeof ConfigSchema>;
 /** Where the credential came from: --api-key, EXCALIDRAW_API_KEY, or what `excalidraw login` saved. */
 export type CredentialSource = "flag" | "env" | "login";
 
-export type RuntimeConfig = GlobalOptions & { apiKey: string; credentialSource: CredentialSource };
+export type RuntimeConfig = GlobalOptions & { credential: Credential; credentialSource: CredentialSource };
 
 export type OutputOptions = z.infer<typeof OutputOptionsSchema>;
 
@@ -73,26 +74,29 @@ export function parseGlobalOptions(command: Command): GlobalOptions {
   };
 }
 
-/** Resolves the global flags and the API key: --api-key, then EXCALIDRAW_API_KEY, then the key saved for the API origin. */
+/**
+ * Resolves the global flags and the credential: --api-key, then EXCALIDRAW_API_KEY, then the key or
+ * browser login saved for the API origin.
+ */
 export function resolveConfig(command: Command): RuntimeConfig {
   const options = parseGlobalOptions(command);
 
   if (options.apiKey) {
     // commander merges the flag and its environment variable into one option, and records which one it used.
     const credentialSource = command.getOptionValueSourceWithGlobals("apiKey") === "env" ? "env" : "flag";
-    return { ...options, apiKey: options.apiKey, credentialSource };
+    return { ...options, credential: { type: "api-key", apiKey: options.apiKey }, credentialSource };
   }
 
   const saved = readCredential(options.apiUrl);
 
   if (!saved) {
     throw new ConfigError([
-      `Missing API key for ${options.apiUrl}. Run "excalidraw login", pass --api-key <key>, or set EXCALIDRAW_API_KEY.`,
-      `Only Excalidraw+ commands need a key: "excalidraw render" and "excalidraw mermaid" work without one.`,
+      `Not logged in to ${options.apiUrl}. Run "excalidraw login", pass --api-key <key>, or set EXCALIDRAW_API_KEY.`,
+      `Only Excalidraw+ commands need a login: "excalidraw render" and "excalidraw mermaid" work without one.`,
     ]);
   }
 
-  return { ...options, apiKey: saved.apiKey, credentialSource: "login" };
+  return { ...options, credential: saved, credentialSource: "login" };
 }
 
 /**

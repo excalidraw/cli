@@ -5,12 +5,30 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod/v4";
 
-// OAuth tokens will be another member of this union.
-const CredentialSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("api-key"), apiKey: z.string().min(1) }),
-]);
+const ApiKeyCredentialSchema = z.object({ type: z.literal("api-key"), apiKey: z.string().min(1) });
+
+/**
+ * What logging in with the browser saves: the tokens, and the endpoints and client they belong to,
+ * so commands can refresh them and logout can revoke them without asking the API where those are.
+ */
+const OAuthCredentialSchema = z.object({
+  type: z.literal("oauth"),
+  accessToken: z.string().min(1),
+  /** When the access token expires, in milliseconds since the epoch. */
+  expiresAt: z.number(),
+  refreshToken: z.string().min(1).optional(),
+  clientId: z.string().min(1),
+  /** The resource (RFC 8707) the tokens are bound to: the API's REST endpoints. */
+  resource: z.string().min(1),
+  tokenEndpoint: z.url(),
+  revocationEndpoint: z.url().optional(),
+});
+
+const CredentialSchema = z.discriminatedUnion("type", [ApiKeyCredentialSchema, OAuthCredentialSchema]);
 
 export type Credential = z.infer<typeof CredentialSchema>;
+
+export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
 /**
  * Bumped only for changes that older versions of the CLI can't read or rewrite safely: they refuse a
@@ -134,7 +152,7 @@ async function writeCredentialsFile(file: CredentialsFile) {
       return;
     }
 
-    // The file holds API keys, so only the user may read it. Windows ignores the modes; the
+    // The file holds API keys and tokens, so only the user may read it. Windows ignores the modes; the
     // profile directory is private there already.
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     // Written next to the file and renamed over it, so an interrupted write can't truncate it.
