@@ -26,6 +26,8 @@ type AuthServer = {
   tokenRequests: URLSearchParams[];
   revokeRequests: URLSearchParams[];
   apiTokens: string[];
+  /** The results the browser was sent to Excalidraw+'s page for, once the login ended. */
+  doneResults: string[];
   /** Access tokens the API accepts; the test can take one away to act out a revocation. */
   validAccessTokens: Set<string>;
   validRefreshTokens: Set<string>;
@@ -53,6 +55,7 @@ async function startAuthServer() {
     tokenRequests: [],
     revokeRequests: [],
     apiTokens: [],
+    doneResults: [],
     validAccessTokens: new Set(),
     validRefreshTokens: new Set(),
     expiresIn: 3600,
@@ -146,6 +149,9 @@ async function startAuthServer() {
         state.validRefreshTokens.delete(form.get("token")!);
         res.writeHead(200).end();
       }
+    } else if (url.pathname === "/oauth/done") {
+      state.doneResults.push(url.search);
+      res.writeHead(200).end();
     } else if (url.pathname === "/api/v1/workspaces") {
       const token = req.headers.authorization?.replace(/^Bearer /, "") ?? "";
       state.apiTokens.push(token);
@@ -197,6 +203,14 @@ async function setUp(t: test.TestContext) {
   return { server: server.state, run, saved, credentialsFile };
 }
 
+/** The result pages the browser was sent to; the browser follows the redirect after the CLI answers it. */
+async function doneResults(server: AuthServer) {
+  for (let tries = 0; tries < 50 && !server.doneResults.length; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return server.doneResults;
+}
+
 // The fake browser is a script run through its shebang.
 const skip = process.platform === "win32" ? "the fake browser needs a shebang" : false;
 
@@ -207,6 +221,8 @@ test("login --web logs in with the browser, and commands use the login", { skip 
   assert.equal(login.stdout, "");
   assert.match(login.stderr, /Allow the CLI in the browser that opened\. If it didn't open, go to:\nhttp:\/\/127\.0\.0\.1:\d+\/api\/auth\/oauth2\/authorize\?/);
   assert.match(login.stderr, /Logged in to Acme\n$/);
+  // The tab ends on Excalidraw+'s page, which the API redirects to.
+  assert.deepEqual(await doneResults(server), ["?result=success"]);
 
   const [authorize] = server.authorizeRequests;
   assert.ok(authorize);
@@ -319,6 +335,7 @@ test("login saves nothing when the person turns the CLI down in the browser", { 
       return true;
     },
   );
+  assert.deepEqual(await doneResults(server), ["?result=cancelled"]);
   assert.equal(server.tokenRequests.length, 0);
   assert.equal(existsSync(credentialsFile), false);
 });

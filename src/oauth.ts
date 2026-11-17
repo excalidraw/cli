@@ -26,6 +26,12 @@ const RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource/api/v1";
 /** The loopback redirect the client metadata registers; the port is picked per login (RFC 8252). */
 const CALLBACK_PATH = "/callback";
 
+/**
+ * Where the browser goes once the callback got the login's result: the API redirects it to
+ * Excalidraw+'s page for it, `?result=success|cancelled|failed`, so the tab ends in its design.
+ */
+const DONE_PATH = "/oauth/done";
+
 /** How long to wait for the person to finish in the browser. */
 const LOGIN_TIMEOUT_MS = 10 * 60_000;
 
@@ -145,7 +151,7 @@ export async function logInWithBrowser(options: BrowserLoginOptions): Promise<OA
   const challenge = base64Url(createHash("sha256").update(verifier).digest());
   const state = base64Url(randomBytes(16));
 
-  const callback = await listenForCallback(state);
+  const callback = await listenForCallback(state, options.apiUrl);
   try {
     const redirectUri = `http://127.0.0.1:${callback.port}${CALLBACK_PATH}`;
     const authorizationUrl = new URL(endpoints.authorizationEndpoint);
@@ -206,7 +212,7 @@ type CallbackResult = {
  * Listens on a free loopback port for the authorization server's redirect. Requests without the
  * login's state are turned away and the wait goes on: any local program can reach the port.
  */
-async function listenForCallback(state: string) {
+async function listenForCallback(state: string, apiUrl: string) {
   let settle: { resolve: (result: CallbackResult) => void; reject: (error: Error) => void };
   const code = new Promise<CallbackResult>((resolve, reject) => {
     settle = { resolve, reject };
@@ -223,7 +229,7 @@ async function listenForCallback(state: string) {
 
     const error = url.searchParams.get("error");
     if (error) {
-      respondWithPage(response, 400, "Login cancelled", "Nothing was saved. You can close this tab and go back to the terminal.");
+      redirectToResult(response, apiUrl, "cancelled");
       settle.reject(
         error === "access_denied"
           ? new Error("Login cancelled in the browser. Nothing was saved.")
@@ -234,17 +240,14 @@ async function listenForCallback(state: string) {
 
     const authorizationCode = url.searchParams.get("code");
     if (!authorizationCode) {
-      respondWithPage(response, 400, "Login failed", "The browser came back without a login. Run excalidraw login again.");
+      redirectToResult(response, apiUrl, "failed");
       settle.reject(new Error("The browser came back without a login code. Nothing was saved."));
       return;
     }
 
     settle.resolve({
       code: authorizationCode,
-      respond: (succeeded) =>
-        succeeded
-          ? respondWithPage(response, 200, "Logged in", "The Excalidraw CLI is logged in. You can close this tab and go back to the terminal.")
-          : respondWithPage(response, 500, "Login failed", "The Excalidraw CLI couldn't finish logging in. The terminal says why."),
+      respond: (succeeded) => redirectToResult(response, apiUrl, succeeded ? "success" : "failed"),
     });
   });
 
@@ -270,6 +273,15 @@ async function listenForCallback(state: string) {
   };
 }
 
+/** Sends the browser to Excalidraw+'s page for the login's result, through the API it logs in to. */
+function redirectToResult(response: ServerResponse, apiUrl: string, result: "success" | "cancelled" | "failed") {
+  const location = new URL(DONE_PATH, apiUrl);
+  location.searchParams.set("result", result);
+  response.writeHead(302, { Location: location.href, "Cache-Control": "no-store", Connection: "close" });
+  response.end();
+}
+
+/** A plain page for a request that isn't this login's callback, which any local program can send. */
 function respondWithPage(response: ServerResponse, status: number, title: string, message: string) {
   const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} · Excalidraw CLI</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#fff;color:#1b1b1f}@media (prefers-color-scheme:dark){body{background:#121212;color:#e3e3e8}}main{max-width:28rem;padding:2rem;text-align:center}h1{font-size:1.5rem;margin:0 0 .5rem}</style></head><body><main><h1>${title}</h1><p>${message}</p></main></body></html>`;
   response.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", Connection: "close" });
