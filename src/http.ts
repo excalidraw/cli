@@ -76,6 +76,22 @@ async function proxiedFetch(httpsSetting?: ProxySetting, httpSetting?: ProxySett
     undiciFetch(url, { ...(options as object), dispatcher })) as unknown as typeof fetch;
 }
 
+/**
+ * What went wrong in a failed fetch(), from its cause. A host with IPv6 and IPv4 addresses fails
+ * with an AggregateError whose message is empty, so its errors are listed instead.
+ */
+export function describeFetchFailure(error: unknown): string {
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
+  if (cause instanceof AggregateError && !cause.message) {
+    return [...new Set(cause.errors.map((inner) => describeFetchFailure(inner)))].join(", ");
+  }
+  if (cause instanceof Error) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    return cause.message || code || cause.name;
+  }
+  return String(cause);
+}
+
 /** Printed once: the proxied fetch() is set up on the first request. */
 function warn(message: string) {
   process.stderr.write(`${chalk.yellow(message)}\n`);

@@ -1,11 +1,13 @@
 import chalk from "chalk";
 import { z } from "zod/v4";
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRIES, resolveConfig } from "./config.js";
-import { httpFetch } from "./http.js";
+import { describeFetchFailure, httpFetch } from "./http.js";
+import { OAuthSession } from "./oauth.js";
 import { userAgent } from "./package.js";
 
 import type { Command } from "commander";
 import type { GlobalOptions } from "./config.js";
+import type { Credential } from "./credentials.js";
 
 const ErrorResponseSchema = z
   .object({
@@ -16,6 +18,9 @@ const ErrorResponseSchema = z
 
 /** Personal (per-user) API keys carry this prefix; every other key is workspace-wide. */
 const PERSONAL_API_KEY_PREFIX = "uk-";
+
+/** An API key, or a browser login that hands out access tokens. */
+type Auth = string | OAuthSession;
 
 /** 429 is always retried. The gateway statuses are retried only for GET, which is safe to repeat. */
 const RATE_LIMITED_STATUS = 429;
@@ -63,7 +68,7 @@ export class PublicApiClient {
 
   constructor(
     readonly apiUrl: string,
-    private readonly apiKey: string,
+    private readonly auth: Auth,
     options: ClientOptions = {},
   ) {
     this.retries = options.retries ?? DEFAULT_RETRIES;
@@ -74,8 +79,17 @@ export class PublicApiClient {
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
-  get keyType(): "personal" | "workspace" {
-    return this.apiKey.startsWith(PERSONAL_API_KEY_PREFIX) ? "personal" : "workspace";
+  /** A browser login's tokens as they are now: a refresh rotates them. */
+  get oauthCredential() {
+    return this.auth instanceof OAuthSession ? this.auth.current : undefined;
+  }
+
+  /** A browser login acts as its user, like a personal key, in the workspace picked when logging in. */
+  get keyType(): "personal" | "workspace" | "oauth" {
+    if (this.auth instanceof OAuthSession) {
+      return "oauth";
+    }
+    return this.auth.startsWith(PERSONAL_API_KEY_PREFIX) ? "personal" : "workspace";
   }
 
   async request(method: string, path: string, options: RequestOptions = {}) {
@@ -111,9 +125,12 @@ export class PublicApiClient {
   /** Sends the request and reads the whole response, retrying when that is safe. */
   private async fetchWithRetry(method: string, url: URL, body: unknown) {
     const canRepeat = method === "GET";
+    let refreshedLogin = false;
 
     for (let attempt = 0; ; attempt++) {
       const attemptsLeft = this.retries - attempt;
+      // Outside the try below: a login that can't be refreshed is not a network error to retry.
+      const token = typeof this.auth === "string" ? this.auth : await this.auth.accessToken();
       // One deadline covers the headers and the body, so a stalled or trickling response can't hang the CLI.
       const signal = AbortSignal.timeout(this.timeout);
       let response: Response;
@@ -122,7 +139,7 @@ export class PublicApiClient {
         response = await httpFetch(url, {
           method,
           headers: {
-            Authorization: `Bearer ${this.apiKey}`,
+            Authorization: `Bearer ${token}`,
             Accept: "application/json",
             "User-Agent": userAgent,
             ...(body === undefined ? {} : { "Content-Type": "application/json" }),
@@ -140,6 +157,17 @@ export class PublicApiClient {
         throw new Error(formatNetworkError(url, error, { method, timeout: this.timeout }), {
           cause: error,
         });
+      }
+
+      // An access token can be revoked or expire early (a clock off by minutes): refresh it once and
+      // send the request again. The API turned the request down, so even a write is safe to repeat.
+      if (response.status === 401 && this.auth instanceof OAuthSession && !refreshedLogin) {
+        refreshedLogin = true;
+        await response.text().catch(() => undefined);
+        await this.auth.refresh();
+        // Not a retry: it doesn't use up one of --retries.
+        attempt--;
+        continue;
       }
 
       const rateLimited = response.status === RATE_LIMITED_STATUS;
@@ -215,8 +243,14 @@ export function getClient(command: Command) {
   return createClient(resolveConfig(command));
 }
 
-export function createClient(config: GlobalOptions & { apiKey: string }) {
-  return new PublicApiClient(config.apiUrl, config.apiKey, {
+export function createClient(config: GlobalOptions & { credential: Credential }) {
+  const { credential } = config;
+  const auth =
+    credential.type === "api-key"
+      ? credential.apiKey
+      : new OAuthSession(config.apiUrl, credential, { timeout: config.requestTimeout });
+
+  return new PublicApiClient(config.apiUrl, auth, {
     retries: config.retries,
     timeout: config.requestTimeout,
     raw: config.raw,
@@ -269,8 +303,7 @@ function formatNetworkError(
     return `${subject} timed out after ${timeout} ms.${mayHaveApplied} Use --request-timeout to allow more time.`;
   }
 
-  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
-  const detail = cause instanceof Error ? cause.message : String(cause);
+  const detail = describeFetchFailure(error);
 
   if (status !== undefined) {
     return `${subject} was interrupted: ${detail}.${mayHaveApplied}`;

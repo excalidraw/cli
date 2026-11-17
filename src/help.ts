@@ -188,7 +188,7 @@ function groupTitle(group: string) {
     return freeAccent.bold(group);
   }
   if (group === PLUS_GROUP) {
-    return `${plusAccent.bold(group)} ${chalk.dim('· needs an API key, run "excalidraw login"')}`;
+    return `${plusAccent.bold(group)} ${chalk.dim('· needs a login, run "excalidraw login"')}`;
   }
   return chalk.bold(group);
 }

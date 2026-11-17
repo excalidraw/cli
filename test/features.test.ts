@@ -543,12 +543,12 @@ test("login saves the key per API origin, and commands use it unless a flag or v
       assert.equal((await whoami(origin, ["--api-key", "test-key"])).credentialSource, "flag");
 
       assert.deepEqual(await runCli(["logout"], { origin: other, env }), { stdout: "", stderr: `Logged out of ${other}\n` });
-      assert.deepEqual(await runCli(["logout"], { origin: other, env }), { stdout: "", stderr: `No key was saved for ${other}\n` });
+      assert.deepEqual(await runCli(["logout"], { origin: other, env }), { stdout: "", stderr: `No login was saved for ${other}\n` });
       await assert.rejects(
         () => runCli(["scenes", "list"], { origin: other, env }),
         (error: unknown) => {
           assertExecError(error);
-          assert.match(error.stderr, new RegExp(`Missing API key for ${escapeRegExp(other)}\\. Run "excalidraw login"`));
+          assert.match(error.stderr, new RegExp(`Not logged in to ${escapeRegExp(other)}\\. Run "excalidraw login"`));
           return true;
         },
       );
@@ -581,7 +581,7 @@ test("login doesn't save a key the API rejects, and doesn't save EXCALIDRAW_API_
       () => runCli(["login"], { origin, env: { XDG_CONFIG_HOME: config } }),
       (error: unknown) => {
         assertExecError(error);
-        assert.match(error.stderr, /asks for the key in a terminal\. In scripts, pass it with "excalidraw login --api-key <key>"/);
+        assert.match(error.stderr, /asks how to log in in a terminal\. In scripts, pass a key with "excalidraw login --api-key <key>"/);
         return true;
       },
     );
@@ -589,7 +589,7 @@ test("login doesn't save a key the API rejects, and doesn't save EXCALIDRAW_API_
 
     // The saved key works, but the variable still wins, so login and logout say so.
     const login = await runCli(["login", "--api-key", "uk-test-key"], { origin, env: { XDG_CONFIG_HOME: config } });
-    assert.match(login.stderr, /EXCALIDRAW_API_KEY is set, so commands use it instead of the saved key/);
+    assert.match(login.stderr, /EXCALIDRAW_API_KEY is set, so commands use it instead of the saved login/);
     const logout = await runCli(["logout"], { origin, env: { XDG_CONFIG_HOME: config } });
     assert.match(logout.stderr, /EXCALIDRAW_API_KEY is still set/);
   });
@@ -648,7 +648,7 @@ test("login replaces a damaged credentials file, and leaves one from a newer CLI
     assert.equal(await readFile(file, "utf8"), newer);
 
     // A credential type a newer CLI added: login replaces it, and other fields survive the rewrite.
-    await writeFile(file, JSON.stringify({ version: 1, origins: { [origin]: { type: "oauth", token: "x" } }, defaults: { a: 1 } }));
+    await writeFile(file, JSON.stringify({ version: 1, origins: { [origin]: { type: "passkey", token: "x" } }, defaults: { a: 1 } }));
     await rejects(["scenes", "list"], new RegExp(`Can't use the credentials saved for ${escapeRegExp(origin)} in .*If a newer version of the CLI saved them, upgrade it`));
     await runCli(["login", "--api-key", "test-key"], { origin, env });
     await runCli(["scenes", "list"], { origin, env });

@@ -30,13 +30,13 @@ test("help output exposes the command tree", async () => {
         "--api-key <key>",
         "--api-url <url>",
         "Free, no account",
-        "With Excalidraw+ · needs an API key",
+        "With Excalidraw+ · needs a login",
         "(default json, env EXCALIDRAW_OUTPUT)",
       ],
     },
     {
       args: ["login", "--help"],
-      expected: ["plus.excalidraw.com/docs/api/authentication", "credentials.json", "--api-key uk-...", "OAuth) is coming soon"],
+      expected: ["plus.excalidraw.com/docs/api/authentication", "credentials.json", "--api-key uk-...", "--web", "Settings → Connected apps"],
     },
     { args: ["scenes", "--help"], expected: ["list", "get <sceneId>", "create", "update", "delete", "content", "render"] },
     { args: ["render", "--help"], expected: ["--out <file>", "--frame-id <id>", "--browser-path <path>", "No account or API key"] },
@@ -141,8 +141,8 @@ test("missing API key prints a setup hint", async () => {
       assertExecError(error);
       assert.equal(error.code, 1);
       assert.match(error.stderr, /Configuration error:/);
-      assert.match(error.stderr, /Missing API key for https:\/\/api\.excalidraw\.com\./);
-      assert.match(error.stderr, /Only Excalidraw\+ commands need a key: "excalidraw render" and "excalidraw mermaid" work without one\./);
+      assert.match(error.stderr, /Not logged in to https:\/\/api\.excalidraw\.com\./);
+      assert.match(error.stderr, /Only Excalidraw\+ commands need a login: "excalidraw render" and "excalidraw mermaid" work without one\./);
       assert.match(error.stderr, /Run "excalidraw login", pass --api-key <key>, or set EXCALIDRAW_API_KEY\./);
       assert.doesNotMatch(error.stderr, /expected string, received undefined/);
       return true;
