@@ -1,6 +1,6 @@
 {
   "name": "@excalidraw/cli",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Manage Excalidraw workspace resources through the public API, render scenes locally as PNG or SVG, and convert Mermaid diagrams.",
   "keywords": [
     "excalidraw",
