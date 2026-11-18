@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -172,9 +172,13 @@ async function startAuthServer() {
   return { state, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
-/** A browser that follows the authorization request's redirect back to the CLI, as a person allowing it would. */
+/**
+ * A browser that follows the authorization request's redirect back to the CLI, as a person allowing it would.
+ * Its path has a space in it, like WSL's "/mnt/c/Program Files/…/chrome.exe".
+ */
 async function writeFakeBrowser(dir: string) {
-  const path = join(dir, "fake-browser.mjs");
+  await mkdir(join(dir, "Program Files"));
+  const path = join(dir, "Program Files", "fake-browser.mjs");
   await writeFile(
     path,
     `#!/usr/bin/env node

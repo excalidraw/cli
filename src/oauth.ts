@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { once } from "node:events";
+import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { z } from "zod/v4";
 import { readCredential, saveCredential } from "./credentials.js";
@@ -298,7 +299,7 @@ export async function openBrowser(url: string): Promise<boolean> {
   let args: string[];
 
   if (browser) {
-    [command, ...args] = browser.split(/\s+/) as [string, ...string[]];
+    [command, ...args] = await browserCommand(browser);
     args.push(url);
   } else if (process.platform === "darwin") {
     [command, args] = ["open", [url]];
@@ -319,6 +320,16 @@ export async function openBrowser(url: string): Promise<boolean> {
   }
   child.unref();
   return true;
+}
+
+/**
+ * $BROWSER as a command and its arguments. A value that names a file is the command whole, as
+ * sensible-browser and npm take it, since a path such as WSL's "/mnt/c/Program Files/…/chrome.exe"
+ * has spaces in it. Anything else is a command and its arguments, such as "firefox --new-window".
+ */
+async function browserCommand(browser: string): Promise<[string, ...string[]]> {
+  const isFile = await stat(browser).then((stats) => stats.isFile(), () => false);
+  return isFile ? [browser] : (browser.split(/\s+/) as [string, ...string[]]);
 }
 
 /**
