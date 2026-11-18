@@ -27,6 +27,7 @@ Render Excalidraw drawings and Mermaid diagrams from your terminal, free and wit
 - 🔒 **Runs locally**: uses the browser you already have. Nothing is uploaded, no account needed.
 - ☁️ **Excalidraw+ workspace**: log in with your browser, then manage scenes, collections, share links, presentations, members and audit logs.
 - 🤖 **Made for scripts and AI agents**: JSON output, stdin and stdout, and `EXCALIDRAW_API_KEY`.
+- ✏️ **Excalidraw+ MCP tools, no setup**: `excalidraw mcp` gives agents the drawing tools (diagrams, charts, slides, screenshots) through the CLI's login.
 
 ## Install
 
@@ -65,6 +66,7 @@ For scripts, CI and machines without a browser, use an API key instead: `excalid
 - [Render to PNG or SVG](https://plus.excalidraw.com/docs/cli/rendering)
 - [Mermaid diagrams](https://plus.excalidraw.com/docs/cli/mermaid)
 - [Editing scene content](https://plus.excalidraw.com/docs/cli/scene-content)
+- [MCP tools](https://plus.excalidraw.com/docs/cli/mcp)
 - [Scripting and agents](https://plus.excalidraw.com/docs/cli/scripting)
 - [Configuration and API keys](https://plus.excalidraw.com/docs/cli/configuration)
 - [Command reference](https://plus.excalidraw.com/docs/cli#commands)

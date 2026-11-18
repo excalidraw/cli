@@ -51,6 +51,10 @@ excalidraw scenes render <sceneId> --out scene.png
 
 # Share it with anyone who has the link
 excalidraw scenes share <sceneId> --access view
+
+# Draw with the Excalidraw+ MCP tools, without configuring an MCP server
+excalidraw mcp tools --output table
+excalidraw mcp call create_mermaid_diagram --args-file diagram.json
 ```
 
 Every command has `--help` with examples, for instance `excalidraw scenes content patch --help`.
@@ -82,6 +86,7 @@ With an Excalidraw+ login:
 | `workspace users` | List, update or remove members |
 | `workspace invites` | Manage email invites and invite links |
 | `logs` | Query the workspace audit log |
+| `mcp` | Draw with the Excalidraw+ MCP tools: diagrams, charts, slides and screenshots |
 
 Updating the workspace, and the `users`, `invites` and `logs` commands, need admin rights. A personal key that belongs to a member gets `HTTP 403`.
 
@@ -90,5 +95,6 @@ Updating the workspace, and the `users`, `invites` and `logs` commands, need adm
 - [Render to PNG or SVG](rendering.md): image options, slides, fonts and browsers.
 - [Mermaid diagrams](mermaid.md): turn Mermaid into editable Excalidraw scenes.
 - [Editing scene content](scene-content.md): replace or patch a workspace scene.
+- [MCP tools](mcp.md): let an agent draw diagrams, charts and slides through the CLI's login.
 - [Scripting and agents](scripting.md): JSON output, stdin and stdout, retries and exit codes.
 - [Configuration](configuration.md): flags, environment variables and API keys.

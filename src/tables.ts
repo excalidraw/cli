@@ -65,6 +65,18 @@ export const logTable: TableSpec = {
   ],
 };
 
+export const mcpToolTable: TableSpec = {
+  rows: listRows("tools"),
+  columns: [
+    column("tool", "name"),
+    {
+      header: "access",
+      value: (row) => (pick(row, "readOnly") ? "read" : pick(row, "destructive") ? "write" : "add"),
+    },
+    column("summary", "summary"),
+  ],
+};
+
 /** Renders a flat object as two columns: one row per key. */
 export const keyValueTable: TableSpec = {
   rows: (value) =>

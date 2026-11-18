@@ -161,6 +161,16 @@ export const MermaidOptionsSchema = ImageOptionsSchema.extend({
 
 export const JsonObjectSchema = z.record(z.string(), z.unknown());
 
+export const McpCallOptionsSchema = z
+  .object({
+    args: z.string().optional(),
+    argsFile: z.string().min(1).optional(),
+    out: z.string().min(1).optional(),
+  })
+  .refine((value) => value.args === undefined || value.argsFile === undefined, {
+    message: "Pass --args or --args-file, not both.",
+  });
+
 export const CollectionCreateOptionsSchema = z.object({
   name: z.string().min(1),
 });

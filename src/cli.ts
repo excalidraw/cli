@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { registerCollectionsCommands } from "./commands/collections.js";
 import { registerLoginCommands } from "./commands/login.js";
 import { registerLogsCommands } from "./commands/logs.js";
+import { registerMcpCommands } from "./commands/mcp.js";
 import { registerScenesCommands } from "./commands/scenes.js";
 import { registerWhoamiCommand } from "./commands/whoami.js";
 import { registerWorkspaceCommands } from "./commands/workspace.js";
@@ -52,11 +53,15 @@ EXAMPLES
   $ excalidraw scenes list --all --output table
   $ excalidraw scenes content get <sceneId> --out scene.json
   $ excalidraw scenes render <sceneId> --out scene.png
+  $ excalidraw mcp call create_mermaid_diagram --args-file diagram.json
 
 SETUP
   render and mermaid only need an installed Chrome, Chromium, Edge or Firefox.
   "excalidraw login" logs in to Excalidraw+ with the browser, or saves an API key. In scripts and CI, set EXCALIDRAW_API_KEY or pass --api-key instead.
   --api-url points the CLI at a staging or self-hosted origin, without /api/v1. Logins are saved per origin.
+
+AGENTS
+  To draw in a workspace (diagrams, charts, tables, slides, screenshots), use the Excalidraw+ MCP tools through "excalidraw mcp": no MCP server to configure. Start with "excalidraw mcp instructions" and "excalidraw mcp tools".
 
 OUTPUT
   Commands print JSON. --output table prints lists, whoami and update as tables, and --raw prints the API's response text.
@@ -82,6 +87,7 @@ OUTPUT
   registerCollectionsCommands(program);
   registerWorkspaceCommands(program);
   registerLogsCommands(program);
+  registerMcpCommands(program);
 
   // Created last, so subcommands don't share it. The help leaves it out of the command list.
   program.helpCommand(true);
