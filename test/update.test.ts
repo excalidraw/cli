@@ -184,7 +184,7 @@ test("update installs the latest version with the package manager that installed
   assert.equal((await fake.calls()).length, 1, "only the failed install ran");
 });
 
-test("update explains what to do for npx and project installs instead of installing", POSIX_ONLY, async (t) => {
+test("update explains what to do for npx, Homebrew and project installs instead of installing", POSIX_ONLY, async (t) => {
   const directory = await withTemporaryDirectory(t);
   const registry = await startRegistry("2.0.0");
   t.after(() => registry.close());
@@ -194,6 +194,11 @@ test("update explains what to do for npx and project installs instead of install
     [
       await install(join(directory, "npm-cache", "_npx", "f00d", "node_modules", "@excalidraw", "cli"), "1.0.0"),
       /started by npx, which can reuse a version it downloaded before\. Run "npx @excalidraw\/cli@latest" to use 2\.0\.0\./,
+    ],
+    [
+      // Homebrew installs into an npm global prefix inside the Cellar, which must not be mistaken for npm's.
+      await installWithNpm(join(directory, "Cellar", "excalidraw-cli", "1.0.0", "libexec"), "1.0.0"),
+      /installed by Homebrew\. Run "brew upgrade excalidraw-cli" to update it once the formula has 2\.0\.0\./,
     ],
     [
       await install(join(directory, "project", "node_modules", "@excalidraw", "cli"), "1.0.0"),
