@@ -9,10 +9,11 @@ import type { Command } from "commander";
 import type { GlobalOptions } from "./config.js";
 import type { Credential } from "./credentials.js";
 
+// `error` is a status name from the REST API, and a JSON-RPC error object from the MCP endpoint.
 const ErrorResponseSchema = z
   .object({
     message: z.string().optional(),
-    error: z.string().optional(),
+    error: z.union([z.string(), z.object({ message: z.string().optional() }).loose()]).optional(),
   })
   .loose();
 
@@ -22,7 +23,7 @@ const PERSONAL_API_KEY_PREFIX = "uk-";
 /** An API key, or a browser login that hands out access tokens. */
 type Auth = string | OAuthSession;
 
-/** 429 is always retried. The gateway statuses are retried only for GET, which is safe to repeat. */
+/** 429 is always retried. The gateway statuses are retried only for requests that are safe to repeat, such as GET. */
 const RATE_LIMITED_STATUS = 429;
 const GATEWAY_STATUSES = new Set([502, 503, 504]);
 const BASE_BACKOFF_MS = 500;
@@ -46,6 +47,10 @@ export type RequestOptions = {
   query?: Record<string, QueryValue>;
   body?: unknown;
   raw?: boolean;
+  /** Added to the request's headers, replacing a default of the same name. */
+  headers?: Record<string, string>;
+  /** A request other than GET that is safe to send again, such as a read the API takes as a POST. */
+  repeatable?: boolean;
 };
 
 type ClientOptions = {
@@ -94,13 +99,15 @@ export class PublicApiClient {
 
   async request(method: string, path: string, options: RequestOptions = {}) {
     const url = this.createUrl(path, options.query);
-    const { response, text } = await this.fetchWithRetry(method, url, options.body);
+    const { response, text } = await this.fetchWithRetry(method, url, options);
 
     if (!response.ok) {
       const parsed = parseJson(text);
       const error = parsed ? ErrorResponseSchema.safeParse(parsed) : null;
       const message = error?.success
-        ? (error.data.message ?? error.data.error ?? response.statusText)
+        ? (error.data.message ??
+          (typeof error.data.error === "string" ? error.data.error : error.data.error?.message) ??
+          response.statusText)
         : response.statusText;
       throw new ApiError(response.status, message, text);
     }
@@ -123,8 +130,8 @@ export class PublicApiClient {
   }
 
   /** Sends the request and reads the whole response, retrying when that is safe. */
-  private async fetchWithRetry(method: string, url: URL, body: unknown) {
-    const canRepeat = method === "GET";
+  private async fetchWithRetry(method: string, url: URL, { body, headers, repeatable }: RequestOptions) {
+    const canRepeat = method === "GET" || repeatable === true;
     let refreshedLogin = false;
 
     for (let attempt = 0; ; attempt++) {
@@ -143,6 +150,7 @@ export class PublicApiClient {
             Accept: "application/json",
             "User-Agent": userAgent,
             ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+            ...headers,
           },
           body: body === undefined ? undefined : JSON.stringify(body),
           signal,
@@ -154,7 +162,7 @@ export class PublicApiClient {
           continue;
         }
 
-        throw new Error(formatNetworkError(url, error, { method, timeout: this.timeout }), {
+        throw new Error(formatNetworkError(url, error, { method, canRepeat, timeout: this.timeout }), {
           cause: error,
         });
       }
@@ -194,7 +202,7 @@ export class PublicApiClient {
         }
 
         throw new Error(
-          formatNetworkError(url, error, { method, timeout: this.timeout, status: response.status }),
+          formatNetworkError(url, error, { method, canRepeat, timeout: this.timeout, status: response.status }),
           { cause: error },
         );
       }
@@ -292,10 +300,9 @@ export function parseRetryAfter(header: string | null): number | undefined {
 function formatNetworkError(
   url: URL,
   error: unknown,
-  { method, timeout, status }: { method: string; timeout: number; status?: number },
+  { method, canRepeat, timeout, status }: { method: string; canRepeat: boolean; timeout: number; status?: number },
 ) {
-  const mayHaveApplied =
-    method === "GET" ? "" : ` The ${method} request may have been applied; check before repeating it.`;
+  const mayHaveApplied = canRepeat ? "" : ` The ${method} request may have been applied; check before repeating it.`;
   const subject =
     status === undefined ? `The request to ${url.origin}` : `The response from ${url.origin} (HTTP ${status})`;
 
