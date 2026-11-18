@@ -57,6 +57,13 @@ NOTES
         );
       }
 
+      if (installation.type === "homebrew") {
+        // Homebrew owns the install, and its formula can lag npm's latest, so brew decides when to update.
+        throw new Error(
+          `This excalidraw was installed by Homebrew. Run "brew upgrade ${installation.formula}" to update it once the formula has ${latestVersion}.`,
+        );
+      }
+
       if (installation.type === "other") {
         throw new Error(
           `Could not tell how excalidraw was installed: it runs from ${packageDirectory}. If it's a project dependency, update ${packageJson.name} in that project. If you installed it globally, install it again with the same package manager, e.g. "npm install -g ${packageJson.name}@latest".`,

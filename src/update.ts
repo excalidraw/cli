@@ -20,6 +20,8 @@ export type Installation =
   | { type: "global"; packageManager: PackageManager }
   /** Started by a runner that downloads the package on demand, and keeps a version until asked for @latest. */
   | { type: "temporary"; runner: "npx" | "pnpm dlx" | "bunx" }
+  /** A Homebrew formula. Its layout looks like an npm global prefix, but only brew may change it. */
+  | { type: "homebrew"; formula: string }
   /** A project dependency, a source checkout, or a global install in a place the CLI doesn't recognize. */
   | { type: "other" };
 
@@ -54,6 +56,11 @@ export function detectInstallation(): Installation {
   }
   if (matches(/\/bunx-/)) {
     return { type: "temporary", runner: "bunx" };
+  }
+  // Before npm: Homebrew installs npm packages into an npm global prefix under Cellar/<formula>/<version>/libexec.
+  const formula = paths.map((path) => /\/cellar\/([^/]+)\/[^/]+\/libexec\//i.exec(path)?.[1]).find(Boolean);
+  if (formula) {
+    return { type: "homebrew", formula };
   }
   if (matches(/\/volta\/tools\/image\/packages\//)) {
     return { type: "global", packageManager: "volta" };
@@ -147,6 +154,8 @@ function updateHint(installation: Installation) {
       return `Run ${chalk.cyan("excalidraw update")} to update.`;
     case "temporary":
       return `Run ${chalk.cyan(`${installation.runner} ${packageJson.name}@latest`)} to use it.`;
+    case "homebrew":
+      return `Run ${chalk.cyan(`brew upgrade ${installation.formula}`)} to update.`;
     case "other":
       return undefined;
   }
