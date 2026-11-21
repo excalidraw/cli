@@ -736,6 +736,14 @@ test("mermaid converts a diagram into editable elements sized to their labels, o
   // Measured in Excalifont: the label fills most of its box instead of a fallback font's narrower width.
   assert.ok(label.width > 150 && label.width < container.width, `label ${label.width}, box ${container.width}`);
   assert.equal(scene.elements.filter((element: { type: string }) => element.type === "arrow").length, 2);
+  for (const arrow of scene.elements.filter((element: { type: string }) => element.type === "arrow")) {
+    for (const binding of [arrow.startBinding, arrow.endBinding]) {
+      const target = byId.get(binding.elementId) as { strokeWidth: number };
+      assert.equal(binding.mode, "orbit");
+      assert.ok(binding.fixedPoint.every(Number.isFinite));
+      assert.equal(binding.gap, 5 + target.strokeWidth / 2, "older editors need an explicit arrow gap");
+    }
+  }
 
   const png = join(directory, "flow.png");
   const rendered = JSON.parse((await runCli(["mermaid", input, "--out", png, "--scale", "2"])).stdout);
@@ -746,6 +754,15 @@ test("mermaid converts a diagram into editable elements sized to their labels, o
 
   const svg = await runCli(["mermaid", input, "--out", "-", "--format", "svg", "--elbow"]);
   assert.match(svg.stdout, /^<svg /);
+  const elbow = JSON.parse((await runCli(["mermaid", input, "--out", "-", "--elbow"])).stdout);
+  const elbowArrows = elbow.elements.filter((element: { type: string }) => element.type === "arrow");
+  assert.equal(elbowArrows.length, 2);
+  for (const arrow of elbowArrows) {
+    assert.equal(arrow.elbowed, true);
+    for (const binding of [arrow.startBinding, arrow.endBinding]) {
+      assert.equal(binding.gap, undefined, "elbow bindings keep their fixed-point behavior");
+    }
+  }
 });
 
 test("mermaid turns Gantt charts and timelines into editable elements, and other types such as pie charts into an image", async (t) => {
