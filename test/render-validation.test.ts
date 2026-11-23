@@ -22,6 +22,8 @@ test("render rejects invalid scenes and options without changing the output file
   const cases = [
     { scene: {}, args: [], error: /^elements: /m },
     { scene: { elements: [] }, args: [], error: /empty scene/ },
+    // Only lines and arrows, which Excalidraw sizes to their points, may have a negative size.
+    { scene: { ...fixture, elements: [{ ...fixture.elements[1]!, height: -1 }] }, args: [], error: /^elements\.0\.height: Too small/m },
     { scene: fixture, args: ["--frame-id", "missing"], error: /Frame not found: missing/ },
     { scene: { ...fixture, files: {} }, args: [], error: /missing embedded file data/ },
     {

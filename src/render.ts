@@ -11,17 +11,33 @@ import { renderInBrowser, waitForEveryFontFace } from "./render-page.js";
 import type { Page, Route } from "playwright-core";
 import type { ImageOptions } from "./schemas.js";
 
+// Excalidraw sizes lines and arrows to their points when it restores a scene, and so does the
+// renderer, so their own width and height can be negative. Mermaid sequence diagrams have such
+// lines: an actor's stick figure, and the borders of loop, alt and other blocks.
+const LINEAR_TYPES = new Set(["line", "arrow"]);
+
 const ElementSchema = z
   .object({
     id: z.string().min(1),
     type: z.string().min(1),
     x: z.number(),
     y: z.number(),
-    width: z.number().nonnegative(),
-    height: z.number().nonnegative(),
+    width: z.number(),
+    height: z.number(),
     isDeleted: z.boolean().optional(),
   })
-  .loose();
+  .loose()
+  .check((context) => {
+    if (LINEAR_TYPES.has(context.value.type)) {
+      return;
+    }
+    for (const key of ["width", "height"] as const) {
+      const input = context.value[key];
+      if (input < 0) {
+        context.issues.push({ code: "too_small", origin: "number", minimum: 0, inclusive: true, input, path: [key] });
+      }
+    }
+  });
 
 const FRAME_TYPES = new Set(["frame", "magicframe"]);
 
