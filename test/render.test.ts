@@ -778,6 +778,29 @@ test("mermaid turns Gantt charts and timelines into editable elements, and other
   assert.deepEqual([...pie.types], ["image"]);
 });
 
+test("mermaid renders sequence diagrams with actors and blocks, whose lines can have a negative size", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-sequence-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const input = join(directory, "sequence.mmd");
+  // The actor's stick figure and the loop's border include lines drawn up or to the left.
+  await writeFile(input, "sequenceDiagram\n  actor Alice\n  Alice->>Bob: Hi\n  loop Daily\n    Bob->>Alice: Hello\n  end\n");
+
+  for (const name of ["sequence.png", "sequence.svg"]) {
+    const { stdout } = await runCli(["mermaid", input, "--out", join(directory, name)]);
+    assert.ok(JSON.parse(stdout).width > 0, name);
+  }
+  const scene = join(directory, "sequence.excalidraw");
+  await runCli(["mermaid", input, "--out", scene]);
+  const rendered = JSON.parse((await runCli(["render", scene, "--out", join(directory, "rendered.png")])).stdout);
+  assert.equal(rendered.mimeType, "image/png");
+
+  // The renderer sizes a line to its points, whatever width and height it carries.
+  const line = { ...renderFixture().elements[1]!, type: "line", frameId: null, x: 0, y: 0, points: [[0, 0], [100, -50]], width: 100 };
+  const draw = async (height: number) =>
+    (await runPngCli(["render", "-", "--out", "-"], { type: "excalidraw", elements: [{ ...line, height }] })).stdout;
+  assert.deepEqual(await draw(-50), await draw(50));
+});
+
 test("mermaid reports syntax errors with their position", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "excalidraw-mermaid-error-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
