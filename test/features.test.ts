@@ -49,6 +49,17 @@ const logs = Array.from({ length: 5 }, (_, index) => ({
   status: 200,
 }));
 
+const READONLY_LINK = {
+  id: "link_1",
+  type: "readonly",
+  status: "active",
+  name: "#1 Readonly link",
+  created: "2026-09-07T10:00:00.000Z",
+  data: { darkMode: false, x: 0, y: 0, width: 800, height: 600 },
+  url: "https://link.excalidraw.com/readonly/link_1",
+  embedHtml: '<iframe src="https://link.excalidraw.com/readonly/link_1"></iframe>',
+};
+
 /** A name that clears the screen, sets the clipboard (OSC 52), and uses 8-bit CSI and NUL. */
 const HOSTILE_NAME = "\u001b[2J\u001b[HSpoofed \u001b]52;c;aGk=\u0007name\u009b31m\u0000";
 // Everything a terminal could act on, except the tabs and newlines of formatted output.
@@ -134,6 +145,22 @@ function createMockApi() {
     if (url.pathname === "/api/v1/scenes/scene_1/shared-slides" && req.method === "PUT") {
       assert.ok(body);
       return send(200, { enabled: body.enabled, url: body.enabled ? "https://link.excalidraw.com/p/abc" : null });
+    }
+
+    if (url.pathname === "/api/v1/scenes/scene_1/readonly-links" && req.method === "GET") {
+      return send(200, { links: [READONLY_LINK] });
+    }
+
+    if (url.pathname === "/api/v1/scenes/scene_1/readonly-links" && req.method === "POST") {
+      return send(200, READONLY_LINK);
+    }
+
+    if (url.pathname === "/api/v1/scenes/scene_1/readonly-links/link_1" && req.method === "PATCH") {
+      return send(200, READONLY_LINK);
+    }
+
+    if (url.pathname === "/api/v1/scenes/scene_1/readonly-links/link_1" && req.method === "DELETE") {
+      return send(200, {});
     }
 
     // Sends the headers and part of the body, then drops the connection or never finishes.
@@ -1005,6 +1032,104 @@ test("scenes share-slides turns the presentation link on, or off with --off", as
 
     assert.deepEqual(calls.map((call) => call.body), [{ enabled: true }, { enabled: false }]);
     assert.ok(calls.every((call) => call.method === "PUT" && call.path === "/api/v1/scenes/scene_1/shared-slides"));
+  });
+});
+
+test("scenes share-slides sends only the settings its flags name", async () => {
+  await withApi(async ({ origin, calls }) => {
+    const share = (...flags: string[]) => runCli(["scenes", "share-slides", "scene_1", ...flags], { origin });
+    await share("--slide-titles", "--no-transitions", "--animations", "--no-downloads", "--auto-play", "10");
+    await share("--off", "--downloads", "--no-auto-play");
+    await share("--auto-play", "0");
+
+    assert.deepEqual(calls.map((call) => call.body), [
+      {
+        enabled: true,
+        settings: { showSlideTitle: true, animateSlides: false, playAnimations: true, disallowDownload: true, autoPlaySlides: 10 },
+      },
+      { enabled: false, settings: { disallowDownload: false, autoPlaySlides: 0 } },
+      { enabled: true, settings: { autoPlaySlides: 0 } },
+    ]);
+
+    await assert.rejects(share("--auto-play", "101"), (error) => {
+      assertExecError(error);
+      assert.match(error.stderr, /--auto-play/);
+      return true;
+    });
+    assert.equal(calls.length, 3);
+  });
+});
+
+test("scenes readonly-links lists, creates, updates and deletes a scene's read-only links", async () => {
+  await withApi(async ({ origin, calls }) => {
+    const links = (...args: string[]) => runCli(["scenes", "readonly-links", ...args], { origin });
+
+    assert.deepEqual(JSON.parse((await links("list", "scene_1")).stdout), { links: [READONLY_LINK] });
+    assert.equal(
+      (await links("list", "scene_1", "--output", "table")).stdout,
+      "ID      NAME              STATUS  CREATED\nlink_1  #1 Readonly link  active  2026-09-07T10:00:00.000Z\n",
+    );
+    assert.deepEqual(JSON.parse((await links("create", "scene_1")).stdout), READONLY_LINK);
+    await links("create", "scene_1", "--name", "Docs", "--frame-id", "frame_1", "--theme", "dark", "--scene-title", "--menu", "--theme-toggle", "--frame-outlines", "--no-interaction");
+    await links("create", "scene_1", "--element-ids", "a, b");
+    // A negative x isn't taken for a flag.
+    await links("create", "scene_1", "--area", "-100,-50.5,800,600");
+    await links("update", "scene_1", "link_1", "--status", "inactive");
+    await links("update", "scene_1", "link_1", "--theme", "light", "--no-scene-title", "--interaction", "--area", "0,0,10,10");
+    await links("delete", "scene_1", "link_1");
+
+    const collection = "/api/v1/scenes/scene_1/readonly-links";
+    assert.deepEqual(
+      calls.map(({ method, path, body }) => ({ method, path, body })),
+      [
+        { method: "GET", path: collection, body: undefined },
+        { method: "GET", path: collection, body: undefined },
+        // Viewers can pan and zoom unless --no-interaction says otherwise.
+        { method: "POST", path: collection, body: { disableInteraction: false } },
+        {
+          method: "POST",
+          path: collection,
+          body: {
+            name: "Docs",
+            frameId: "frame_1",
+            darkMode: true,
+            showTitle: true,
+            showMenu: true,
+            showDarkModeToggle: true,
+            showFrameOutlines: true,
+            disableInteraction: true,
+          },
+        },
+        { method: "POST", path: collection, body: { elementIds: ["a", "b"], disableInteraction: false } },
+        { method: "POST", path: collection, body: { area: { x: -100, y: -50.5, width: 800, height: 600 }, disableInteraction: false } },
+        { method: "PATCH", path: `${collection}/link_1`, body: { status: "inactive" } },
+        {
+          method: "PATCH",
+          path: `${collection}/link_1`,
+          body: { area: { x: 0, y: 0, width: 10, height: 10 }, darkMode: false, showTitle: false, disableInteraction: false },
+        },
+        { method: "DELETE", path: `${collection}/link_1`, body: undefined },
+      ],
+    );
+  });
+});
+
+test("scenes readonly-links rejects options the API would, before sending anything", async () => {
+  await withApi(async ({ origin, calls }) => {
+    const rejects = (args: string[], message: RegExp) =>
+      assert.rejects(runCli(["scenes", "readonly-links", ...args], { origin }), (error) => {
+        assertExecError(error);
+        assert.match(error.stderr, message);
+        return true;
+      });
+
+    await rejects(["create", "scene_1", "--frame-id", "frame_1", "--area", "0,0,800,600"], /Use only one of --frame-id, --element-ids, or --area/);
+    await rejects(["create", "scene_1", "--area", "0,0,800"], /--area.*x,y,width,height/);
+    await rejects(["create", "scene_1", "--area", "0,0,800,0"], /--area.*x,y,width,height/);
+    await rejects(["create", "scene_1", "--element-ids", ","], /--element-ids/);
+    await rejects(["update", "scene_1", "link_1"], /Provide at least one option/);
+    await rejects(["update", "scene_1", "link_1", "--status", "off"], /--status/);
+    assert.equal(calls.length, 0);
   });
 });
 

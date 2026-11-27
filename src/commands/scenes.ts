@@ -3,13 +3,15 @@ import { apiPath, getClient } from "../client.js";
 import { readJsonFile, writeOutputFile } from "../io.js";
 import { emitOutput } from "../output.js";
 import { createScene, readFullContent } from "../scene-content.js";
-import { sceneTable } from "../tables.js";
+import { readOnlyLinkTable, sceneTable } from "../tables.js";
 import { asListCommand } from "./list.js";
 import { registerSceneRenderCommand } from "./render.js";
 import {
   ContentFileOptionsSchema,
   ContentGetOptionsSchema,
   JsonObjectSchema,
+  ReadOnlyLinkCreateOptionsSchema,
+  ReadOnlyLinkUpdateOptionsSchema,
   SceneCreateOptionsSchema,
   SceneListOptionsSchema,
   SceneShareOptionsSchema,
@@ -205,30 +207,46 @@ NOTES
     .command("share-slides")
     .summary("Share a scene's frames as a presentation")
     .description(
-      "Turn the scene's shared presentation link on, or off with --off, and print the link. Anyone with the link can step through the scene's frames as slides without signing in.",
+      "Turn the scene's shared presentation link on, or off with --off, change its settings, and print the link. Anyone with the link can step through the scene's frames as slides without signing in.",
     )
     .argument("<sceneId>", "scene ID whose frames to share")
     .option("--off", "turn the shared slides link off", false)
+    .option("--slide-titles", "show each slide's title, which is its frame's name")
+    .option("--no-slide-titles", "hide the slide titles")
+    .option("--transitions", "scroll to the next slide with an animation")
+    .option("--no-transitions", "switch slides without an animation")
+    .option("--animations", "play the reveal animations set up in the presentation editor")
+    .option("--no-animations", "show each slide complete, without its reveal animations")
+    .option("--downloads", "let viewers download the slides")
+    .option("--no-downloads", "stop viewers from downloading the slides")
+    .option("--auto-play <seconds>", "move to the next slide after this many seconds, from 1 to 100; 0 turns it off")
+    .option("--no-auto-play", "turn auto-play off")
     .addHelpText(
       "after",
       `
 EXAMPLES
   $ excalidraw scenes share-slides <sceneId>
   $ excalidraw scenes share-slides <sceneId> --off
+  $ excalidraw scenes share-slides <sceneId> --auto-play 10 --no-downloads
+  $ excalidraw scenes share-slides <sceneId> --slide-titles --animations | jq -r .url
 
 NOTES
   Each frame in the scene is one slide. Sharing fails with HTTP 400 when the scene has no frames.
   The link stays the same when sharing is turned off and on again; url is null while it's off.
+  A settings flag changes only its own setting, and the output's settings lists all of them. The settings are the ones in the scene's Share presentation dialog.
+  The command turns the link on unless you pass --off. With --off, settings are saved only for a scene whose slides were shared before; otherwise settings is null.
   Turning sharing on fails with HTTP 403 when a workspace admin has disabled scene sharing.
 `,
     )
     .action(async (sceneId: string, options, command: Command) => {
-      const { off } = parseOptions(SceneShareSlidesOptionsSchema, options);
+      const body = parseOptions(SceneShareSlidesOptionsSchema, options);
       const result = await getClient(command).request("PUT", apiPath`/scenes/${sceneId}/shared-slides`, {
-        body: { enabled: !off },
+        body,
       });
       emitOutput(command, result);
     });
+
+  registerSceneReadOnlyLinksCommands(scenes);
 
   const content = scenes
     .command("content")
@@ -339,6 +357,185 @@ NOTES
       const result = await getClient(command).request("PATCH", apiPath`/scenes/${sceneId}/content`, {
         body,
       });
+      emitOutput(command, result);
+    });
+}
+
+/**
+ * Adds the flags a read-only link is set up with. Every display option starts off, so `create` gets
+ * only the flag that turns each one on, and `update` also the one that turns it back off.
+ */
+function addReadOnlyLinkOptions(command: Command, { forUpdate }: { forUpdate: boolean }) {
+  command
+    .option("--name <name>", "the link's name in the scene's Embeddable links list")
+    .option("--frame-id <id>", "start on this frame, which then fills the view")
+    .option("--element-ids <ids>", "start on these elements, comma-separated, with some space around them")
+    .option("--area <x,y,width,height>", "start on this part of the scene, in scene coordinates")
+    .option("--theme <theme>", "show the scene in light or dark mode");
+
+  const toggle = (flag: string, on: string, off: string, { startsOn = false } = {}) => {
+    if (forUpdate || !startsOn) {
+      command.option(`--${flag}`, on);
+    }
+    if (forUpdate || startsOn) {
+      command.option(`--no-${flag}`, off);
+    }
+  };
+
+  toggle("scene-title", "show the scene's name at the top", "hide the scene's name");
+  toggle("menu", "show the menu, which saves the scene to a file or as an image", "hide the menu");
+  toggle("theme-toggle", "show a button that switches between light and dark mode", "hide the theme button");
+  toggle("frame-outlines", "show the outlines and names of frames", "hide the outlines and names of frames");
+  toggle(
+    "interaction",
+    "let viewers pan and zoom",
+    "stop viewers from panning and zooming: they only see the starting area",
+    { startsOn: true },
+  );
+
+  return command;
+}
+
+function registerSceneReadOnlyLinksCommands(scenes: Command) {
+  const links = scenes
+    .command("readonly-links")
+    .summary("Manage a scene's read-only links, which also embed it in other sites")
+    .description(
+      "List, create, change, and delete a scene's read-only links. Anyone with such a link sees the scene without signing in, and its embedHtml iframe embeds the scene in another site.",
+    )
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes readonly-links list <sceneId>
+  $ excalidraw scenes readonly-links create <sceneId> --frame-id <frameId>
+  $ excalidraw scenes readonly-links update <sceneId> <linkId> --theme dark
+  $ excalidraw scenes readonly-links delete <sceneId> <linkId>
+
+NOTES
+  A scene can have several read-only links, each with its own starting area and display options. They are the links in the scene's Embeddable links dialog.
+  This is not the scene's public link, of which a scene has one: see "excalidraw scenes share".
+  Viewers can't change the scene; they see it as it is saved now.
+`,
+    );
+
+  links
+    .command("list")
+    .summary("List a scene's read-only links")
+    .description("List the scene's read-only links, newest first, each with its URL and embed code.")
+    .argument("<sceneId>", "scene ID whose links to list")
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes readonly-links list <sceneId>
+  $ excalidraw scenes readonly-links list <sceneId> --output table
+  $ excalidraw scenes readonly-links list <sceneId> | jq -r '.links[].url'
+
+NOTES
+  Use this to find link IDs before updating or deleting links.
+  The output is { links }, all of them at once: this list has no pages.
+`,
+    )
+    .action(async (sceneId: string, _options, command: Command) => {
+      const result = await getClient(command).request("GET", apiPath`/scenes/${sceneId}/readonly-links`);
+      emitOutput(command, result, readOnlyLinkTable);
+    });
+
+  addReadOnlyLinkOptions(
+    links
+      .command("create")
+      .summary("Create a read-only link to a scene")
+      .description(
+        "Create a read-only link and print it with its URL and embed code. It starts on a frame, some elements or an area, or by default on all of the scene's content.",
+      )
+      .argument("<sceneId>", "scene ID to link to"),
+    { forUpdate: false },
+  )
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes readonly-links create <sceneId>
+  $ excalidraw scenes readonly-links create <sceneId> --name "Docs embed" --frame-id <frameId>
+  $ excalidraw scenes readonly-links create <sceneId> --element-ids <elementId>,<elementId> --theme dark
+  $ excalidraw scenes readonly-links create <sceneId> --area 0,0,800,600 --no-interaction
+  $ excalidraw scenes readonly-links create <sceneId> --scene-title --theme-toggle | jq -r .embedHtml
+
+NOTES
+  Use only one of --frame-id, --element-ids, or --area. Find frame and element IDs with "excalidraw scenes content get".
+  Unless flags say otherwise, the link shows the scene in light mode, lets viewers pan and zoom, and shows no title, menu, theme button or frame outlines.
+  The output's url opens the read-only page, and embedHtml is an iframe for another site.
+  The link's preview image, which link previews on social media show, is a render of where it starts.
+  Creating a link fails with HTTP 403 when a workspace admin has disabled scene sharing.
+`,
+    )
+    .action(async (sceneId: string, options, command: Command) => {
+      const body = parseOptions(ReadOnlyLinkCreateOptionsSchema, options);
+      const result = await getClient(command).request("POST", apiPath`/scenes/${sceneId}/readonly-links`, {
+        body,
+      });
+      emitOutput(command, result);
+    });
+
+  addReadOnlyLinkOptions(
+    links
+      .command("update")
+      .summary("Change a read-only link, or turn it off and on")
+      .description(
+        "Change a read-only link's name, where it starts, or its display options, or turn it off and on with --status.",
+      )
+      .argument("<sceneId>", "scene ID the link belongs to")
+      .argument("<linkId>", "read-only link ID to change"),
+    { forUpdate: true },
+  )
+    .option("--status <status>", "inactive turns the link off, active turns it on again")
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes readonly-links update <sceneId> <linkId> --name "Docs embed"
+  $ excalidraw scenes readonly-links update <sceneId> <linkId> --frame-id <frameId>
+  $ excalidraw scenes readonly-links update <sceneId> <linkId> --theme dark --no-menu
+  $ excalidraw scenes readonly-links update <sceneId> <linkId> --status inactive
+
+NOTES
+  Provide at least one option. Options you leave out stay unchanged.
+  Use only one of --frame-id, --element-ids, or --area. A new start also renders a new preview image.
+  An inactive link shows nothing until it is active again, and keeps its URL.
+`,
+    )
+    .action(async (sceneId: string, linkId: string, options, command: Command) => {
+      const body = parseOptions(ReadOnlyLinkUpdateOptionsSchema, options);
+      const result = await getClient(command).request(
+        "PATCH",
+        apiPath`/scenes/${sceneId}/readonly-links/${linkId}`,
+        { body },
+      );
+      emitOutput(command, result);
+    });
+
+  links
+    .command("delete")
+    .summary("Delete a read-only link for good")
+    .description("Delete a read-only link. Its URL and every embed of it stop working for good.")
+    .argument("<sceneId>", "scene ID the link belongs to")
+    .argument("<linkId>", "read-only link ID to delete")
+    .addHelpText(
+      "after",
+      `
+EXAMPLES
+  $ excalidraw scenes readonly-links delete <sceneId> <linkId>
+
+NOTES
+  This can't be undone. To turn a link off for a while, use "excalidraw scenes readonly-links update" with --status inactive.
+`,
+    )
+    .action(async (sceneId: string, linkId: string, _options, command: Command) => {
+      const result = await getClient(command).request(
+        "DELETE",
+        apiPath`/scenes/${sceneId}/readonly-links/${linkId}`,
+      );
       emitOutput(command, result);
     });
 }

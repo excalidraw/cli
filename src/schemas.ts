@@ -65,9 +65,118 @@ export const SceneShareOptionsSchema = z.object({
   access: z.enum(["view", "edit", "none"]),
 });
 
-export const SceneShareSlidesOptionsSchema = z.object({
-  off: z.boolean().default(false),
+/** A set flag makes its field true, its --no- twin false; neither leaves the field out. */
+const toggle = z.boolean().optional();
+
+const hasValue = (value: Record<string, unknown>) =>
+  Object.values(value).some((item) => item !== undefined);
+
+/** Becomes the body of PUT /scenes/:sceneId/shared-slides; `settings` only when a flag changes one. */
+export const SceneShareSlidesOptionsSchema = z
+  .object({
+    off: z.boolean().default(false),
+    slideTitles: toggle,
+    transitions: toggle,
+    animations: toggle,
+    downloads: toggle,
+    // --no-auto-play arrives as false; the API turns auto-play off with 0.
+    autoPlay: z.preprocess(
+      (value) => (value === false ? 0 : value),
+      z.coerce.number().int().min(0).max(100).optional(),
+    ),
+  })
+  .transform(({ off, slideTitles, transitions, animations, downloads, autoPlay }) => {
+    const settings = {
+      showSlideTitle: slideTitles,
+      animateSlides: transitions,
+      playAnimations: animations,
+      disallowDownload: downloads === undefined ? undefined : !downloads,
+      autoPlaySlides: autoPlay,
+    };
+    return { enabled: !off, ...(hasValue(settings) && { settings }) };
+  });
+
+const splitList = (value: unknown) =>
+  typeof value === "string"
+    ? value
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    : value;
+
+/** "x,y,width,height" in scene coordinates. */
+const AreaSchema = z.string().transform((value, context) => {
+  const parts = value.split(",").map((part) => part.trim());
+  const [x, y, width, height] = parts.map((part) => (part === "" ? Number.NaN : Number(part)));
+  const valid =
+    parts.length === 4 &&
+    [x, y, width, height].every((item) => Number.isFinite(item)) &&
+    width! > 0 &&
+    height! > 0;
+
+  if (!valid) {
+    context.issues.push({
+      code: "custom",
+      message: "expected x,y,width,height as four numbers with a width and height above 0, for example 0,0,800,600",
+      input: value,
+    });
+    return z.NEVER;
+  }
+
+  return { x: x!, y: y!, width: width!, height: height! };
 });
+
+const ReadOnlyLinkOptionsSchema = z.object({
+  name: z.string().min(1).optional(),
+  frameId: z.string().min(1).optional(),
+  elementIds: z
+    .preprocess(
+      splitList,
+      z.array(z.string()).min(1, "Provide at least one element ID, for example --element-ids id1,id2").max(2000),
+    )
+    .optional(),
+  area: AreaSchema.optional(),
+  theme: z.enum(["light", "dark"]).optional(),
+  sceneTitle: toggle,
+  menu: toggle,
+  themeToggle: toggle,
+  interaction: toggle,
+  frameOutlines: toggle,
+});
+
+const hasOneStart = (value: z.infer<typeof ReadOnlyLinkOptionsSchema>) =>
+  [value.frameId, value.elementIds, value.area].filter((item) => item !== undefined).length <= 1;
+const ONE_START = { message: "Use only one of --frame-id, --element-ids, or --area." };
+
+/** The fields the read-only link routes take, from the flags that set them. */
+const toReadOnlyLinkBody = ({
+  theme,
+  sceneTitle,
+  menu,
+  themeToggle,
+  interaction,
+  frameOutlines,
+  ...fields
+}: z.infer<typeof ReadOnlyLinkOptionsSchema> & { status?: "active" | "inactive" }) => ({
+  ...fields,
+  showTitle: sceneTitle,
+  showMenu: menu,
+  darkMode: theme === undefined ? undefined : theme === "dark",
+  showDarkModeToggle: themeToggle,
+  disableInteraction: interaction === undefined ? undefined : !interaction,
+  showFrameOutlines: frameOutlines,
+});
+
+export const ReadOnlyLinkCreateOptionsSchema = ReadOnlyLinkOptionsSchema.refine(hasOneStart, ONE_START).transform(
+  toReadOnlyLinkBody,
+);
+
+export const ReadOnlyLinkUpdateOptionsSchema = ReadOnlyLinkOptionsSchema.extend({
+  status: z.enum(["active", "inactive"]).optional(),
+})
+  .refine(hasOneStart, ONE_START)
+  .refine(hasValue, { message: "Provide at least one option to change, such as --name or --status." })
+  .transform(toReadOnlyLinkBody);
 
 export const ContentFileOptionsSchema = z.object({
   file: z.string().min(1),
@@ -217,23 +326,15 @@ export const MaxUsesSchema = z.union([
   z.coerce.number().int().min(1),
 ]);
 
-const splitDomains = (value: unknown) =>
-  typeof value === "string"
-    ? value
-        .split(",")
-        .map((domain) => domain.trim())
-        .filter((domain) => domain.length > 0)
-    : value;
-
 /** Comma-separated list such as "example.com,example.org". */
 export const RestrictedDomainsSchema = z.preprocess(
-  splitDomains,
+  splitList,
   z.array(z.string().min(1)).min(1, "Provide at least one domain, for example --restricted-domains example.com"),
 );
 
 /** Same as RestrictedDomainsSchema, but "none" clears the restriction (sends null). */
 export const RestrictedDomainsUpdateSchema = z.preprocess(
-  (value) => (typeof value === "string" && value.trim().toLowerCase() === "none" ? null : splitDomains(value)),
+  (value) => (typeof value === "string" && value.trim().toLowerCase() === "none" ? null : splitList(value)),
   z.array(z.string().min(1)).min(1).nullable(),
 );
 

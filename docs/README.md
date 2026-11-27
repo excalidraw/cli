@@ -49,8 +49,9 @@ excalidraw scenes create --name "Architecture" --collection-id <collectionId> --
 excalidraw scenes content get <sceneId> --out scene.json
 excalidraw scenes render <sceneId> --out scene.png
 
-# Share it with anyone who has the link
+# Share it with anyone who has the link, or embed one frame of it in another site
 excalidraw scenes share <sceneId> --access view
+excalidraw scenes readonly-links create <sceneId> --frame-id <frameId> | jq -r .embedHtml
 
 # Draw with the Excalidraw+ MCP tools, without configuring an MCP server
 excalidraw mcp tools --output table
@@ -78,7 +79,8 @@ With an Excalidraw+ login:
 | `whoami` | Show the workspace, key type, credential source and API origin in use |
 | `scenes` | List, create, rename, move, pin and trash scenes |
 | `scenes share` | Turn a scene's public view or edit link on or off |
-| `scenes share-slides` | Share a scene's frames as a presentation link |
+| `scenes share-slides` | Share a scene's frames as a presentation link, and change its settings |
+| `scenes readonly-links` | Manage a scene's read-only links, which also embed it in other sites |
 | `scenes content` | Read, replace or patch a scene's drawing |
 | `scenes render` | Render a workspace scene to PNG or SVG |
 | `collections` | Manage collections and the scenes in them |
