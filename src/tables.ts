@@ -18,6 +18,11 @@ export const sceneTable: TableSpec = {
   ],
 };
 
+export const readOnlyLinkTable: TableSpec = {
+  rows: listRows("links"),
+  columns: [column("id", "id"), column("name", "name"), column("status", "status"), column("created", "created")],
+};
+
 export const collectionTable: TableSpec = {
   rows: listRows("data"),
   columns: [column("id", "id"), column("name", "name"), column("created", "created")],
