@@ -26,7 +26,10 @@ export type Installation =
   | { type: "other" };
 
 const INSTALL_COMMANDS: Record<PackageManager, string[]> = {
-  npm: ["npm", "install", "-g"],
+  // npm answers from its cached package metadata for 5 minutes, so right after a release it doesn't know the
+  // version the CLI found and fails with ETARGET. --prefer-online makes it ask the registry first. pnpm, yarn
+  // and bun ask the registry when their cached metadata lacks the version.
+  npm: ["npm", "install", "-g", "--prefer-online"],
   pnpm: ["pnpm", "add", "-g"],
   yarn: ["yarn", "global", "add"],
   bun: ["bun", "add", "-g"],
