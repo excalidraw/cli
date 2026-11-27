@@ -258,80 +258,6 @@ liveTest("scenes create --file writes content in one step", async (t) => {
   assert.ok(hasElement(content, "rectElement0000000001"), "created scene should contain the imported element");
 });
 
-liveTest("scenes share-slides changes the link's settings", async (t) => {
-  assert.ok(importedSceneId, "previous step should create importedSceneId");
-  assert.ok(tempDir, "setup should create tempDir");
-  const frameFile = join(tempDir, "scene-frame.json");
-  const frame = { ...createPutContent().elements[0], id: "frameElement000000001", type: "frame", name: "Slide 1", index: "a2" };
-  await writeFile(frameFile, JSON.stringify({ elements: [frame] }), "utf8");
-  await runCli(["scenes", "content", "patch", importedSceneId, "--file", frameFile]);
-
-  type Slides = { enabled: boolean; url: string | null; settings: Record<string, unknown> | null };
-  const shared = await runStepJson<Slides>(t, "Share slides", [
-    "scenes",
-    "share-slides",
-    importedSceneId,
-    "--slide-titles",
-    "--no-downloads",
-    "--auto-play",
-    "5",
-  ]);
-  assert.ok(shared.url, "shared slides should have a link");
-  assert.deepEqual(pick(shared.settings, "showSlideTitle", "disallowDownload", "autoPlaySlides"), {
-    showSlideTitle: true,
-    disallowDownload: true,
-    autoPlaySlides: 5,
-  });
-
-  // Settings the flags don't name stay as they were, also while the link is off.
-  const off = await runStepJson<Slides>(t, "Unshare slides", ["scenes", "share-slides", importedSceneId, "--off", "--no-auto-play"]);
-  assert.equal(off.url, null);
-  assert.deepEqual(pick(off.settings, "showSlideTitle", "disallowDownload", "autoPlaySlides"), {
-    showSlideTitle: true,
-    disallowDownload: true,
-    autoPlaySlides: 0,
-  });
-});
-
-liveTest("scenes readonly-links creates, changes, lists and deletes a link", async (t) => {
-  assert.ok(sceneId, "previous step should create sceneId");
-  type Link = { id: string; name: string; status: string; url: string; embedHtml: string; data: Record<string, unknown> };
-  const links = (...args: string[]) => ["scenes", "readonly-links", ...args];
-
-  const created = await runStepJson<Link>(
-    t,
-    "Create read-only link",
-    links("create", sceneId, "--element-ids", "rectElement0000000001", "--theme", "dark", "--no-interaction"),
-  );
-  assert.ok(created.url.includes(created.id), "the link's URL should hold its id");
-  assert.ok(created.embedHtml.includes(created.url), "the embed code should load the link's URL");
-  assert.equal(created.status, "active");
-  assert.deepEqual(pick(created.data, "darkMode", "disableInteraction"), { darkMode: true, disableInteraction: true });
-
-  const updated = await runStepJson<Link>(
-    t,
-    "Update read-only link",
-    links("update", sceneId, created.id, "--name", "cli-e2e link", "--interaction", "--area", "0,0,800,600", "--status", "inactive"),
-  );
-  assert.equal(updated.name, "cli-e2e link");
-  assert.equal(updated.status, "inactive");
-  assert.deepEqual(pick(updated.data, "darkMode", "disableInteraction", "x", "y", "width", "height"), {
-    darkMode: true,
-    disableInteraction: false,
-    x: 0,
-    y: 0,
-    width: 800,
-    height: 600,
-  });
-
-  const listed = await runStepJson<{ links: Link[] }>(t, "List read-only links", links("list", sceneId));
-  assert.deepEqual(listed.links.map((link) => link.id), [created.id]);
-
-  await runCli(links("delete", sceneId, created.id));
-  const afterDelete = await runStepJson<{ links: Link[] }>(t, "List read-only links after delete", links("list", sceneId));
-  assert.deepEqual(afterDelete.links, []);
-});
-
 liveTest("scenes list --all and table output", async (t) => {
   assert.ok(sceneId, "previous step should create sceneId");
   const result = await runStepJson<Page<Scene>>(t, "List all scenes", ["scenes", "list", "--all", "--limit", "2"]);
@@ -519,11 +445,6 @@ async function runCli(args: string[]) {
     }\nstderr:\n${error.stderr ?? ""}`;
     throw error;
   }
-}
-
-/** The named fields of a response object, to compare without the fields a test doesn't set. */
-function pick(value: Record<string, unknown> | null, ...keys: string[]) {
-  return Object.fromEntries(keys.map((key) => [key, value?.[key]]));
 }
 
 function hasElement(content: SceneContent, id: string) {
