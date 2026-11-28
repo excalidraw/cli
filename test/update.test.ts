@@ -132,7 +132,7 @@ test("update installs the latest version with the package manager that installed
   t.after(() => registry.close());
 
   const installs: [manager: string, main: string, expected: string][] = [
-    ["npm", await installWithNpm(join(directory, "npm"), "1.0.0"), "npm install -g @excalidraw/cli@2.0.0"],
+    ["npm", await installWithNpm(join(directory, "npm"), "1.0.0"), "npm install -g --prefer-online @excalidraw/cli@2.0.0"],
     [
       "pnpm",
       await install(join(directory, "pnpm", "global", "v11", "a1b2", "node_modules", "@excalidraw", "cli"), "1.0.0"),
@@ -171,7 +171,7 @@ test("update installs the latest version with the package manager that installed
     (error: unknown) => {
       assertExecError(error);
       assert.equal(error.stdout, "");
-      assert.match(error.stderr, /"npm install -g @excalidraw\/cli@2\.0\.0" exited with code 3\. Its output above says why\./);
+      assert.match(error.stderr, /"npm install -g --prefer-online @excalidraw\/cli@2\.0\.0" exited with code 3\. Its output above says why\./);
       return true;
     },
   );
